@@ -1,6 +1,6 @@
 # Paula & Erik — Caminhando juntos
 
-Site de casamento construído em etapas. Esta entrega corresponde à **Fase 1**, com as fotografias e os ornamentos reais fornecidos pelo casal. Ainda não é a versão para divulgar e receber confirmações.
+Site de casamento construído em etapas. Esta entrega inclui a **Fase 2 — RSVP fechado**, validada localmente e pendente da configuração do Supabase, com as fotografias e os ornamentos reais fornecidos pelo casal. Ainda não é a versão para divulgar e receber confirmações.
 
 ## O que está pronto
 
@@ -10,9 +10,9 @@ Site de casamento construído em etapas. Esta entrega corresponde à **Fase 1**,
 - Linha orgânica ligando os acontecimentos da caminhada.
 - Seção “Eu escolhi você”, pessoas especiais, informações públicas do evento e encerramento.
 - Menu para celular, navegação por âncoras, foco visível, textos alternativos e respeito à preferência por movimento reduzido.
-- RSVP e presentes sinalizados como “em breve”, sem coletar dados nem simular operações.
+- RSVP fechado por código ou link, com integrantes previamente autorizados e respostas editáveis. Presentes ficam para a próxima fase.
 
-O endereço completo, o estacionamento e o valet não estão nos arquivos públicos. Não há chaves, contas administrativas ou banco conectado nesta fase. A página está marcada como `noindex` durante o desenvolvimento; isso não é um mecanismo de autenticação.
+O endereço completo, o estacionamento e o valet não estão nos arquivos públicos. Não há chaves reais, contas administrativas ou banco em nuvem conectado nesta entrega. A página está marcada como `noindex` durante o desenvolvimento; isso não é um mecanismo de autenticação.
 
 ## Como abrir no seu computador
 
@@ -39,7 +39,7 @@ O endereço completo, o estacionamento e o valet não estão nos arquivos públi
 
 6. Abra o endereço mostrado pelo terminal, normalmente http://localhost:3000. Deixe o terminal aberto enquanto usa a prévia. Para encerrar, pressione Ctrl+C.
 
-Não é necessário criar `.env.local` para esta fase.
+Para ativar o RSVP, configure `.env.local` conforme [FASE-2.md](FASE-2.md).
 
 ## Conferir a versão de produção
 
@@ -69,7 +69,7 @@ Veja `IDENTIDADE-VISUAL.md` para a análise e a seleção de imagens.
 ## Próximas fases
 
 1. **Fase 1 — identidade e conteúdo público:** implementada nesta entrega.
-2. **Fase 2 — Supabase e RSVP fechado:** criar banco, migrations, RLS, convites com códigos seguros, validação no servidor e respostas por integrante autorizado.
+2. **Fase 2 — Supabase e RSVP fechado:** implementada e testada localmente; veja [FASE-2.md](FASE-2.md) para ativação.
 3. **Fase 3 — presentes:** cadastrar os 40 itens, PIX com validação BR Code, links externos e registro de intenção sem confirmação bancária automática.
 4. **Fase 4 — administração:** Supabase Auth, painel protegido, dashboard e formulários de convidados, convites, presentes e RSVP.
 5. **Fase 5 — conteúdo:** gerenciamento de fotos, pessoas especiais, música opcional, textos e configurações.
@@ -77,8 +77,6 @@ Veja `IDENTIDADE-VISUAL.md` para a análise e a seleção de imagens.
 
 O painel não existe nesta fase. As tarefas comuns passarão a ser feitas por formulários administrativos nas fases 4 e 5. O casal não precisará editar JSON, SQL ou código para administrar o site final.
 
-## Configuração futura do Supabase e publicação
+## Configuração do Supabase
 
-As instruções operacionais para criar o projeto Supabase, obter as chaves, configurar `.env.local`, aplicar migrations e criar o administrador serão acrescentadas junto da Fase 2. Ainda não existem migrations para executar. Nunca coloque uma chave administrativa em uma variável `NEXT_PUBLIC_*`.
-
-Na Fase 6, este guia receberá os passos da publicação na Vercel e do domínio próprio, com os nomes exatos das variáveis e as rotas verificadas do sistema final. Não publique esta Fase 1 como se RSVP e pagamentos já estivessem disponíveis.
+Veja [FASE-2.md](FASE-2.md) para variáveis, migration, convites DEMO, testes e pendências. A publicação na Vercel e o domínio próprio permanecem para a fase de publicação.
