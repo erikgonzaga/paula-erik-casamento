@@ -74,3 +74,7 @@ p,.hero-intro,.chapter p,.choice p:not(.eyebrow){line-height:1.35}
 /* Narrative photo flow: generous single-column composition on small screens. */
 .story-photos{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:2rem;align-items:center;padding-top:30px}.story-photos>.photo:first-child{width:100%}.story-photos .photo-quote{margin:0;font-size:clamp(2rem,3.4vw,2.8rem)}.story-photos>.secondary-photo{grid-column:1/-1;width:74%;margin-left:auto}
 @media(max-width:640px){.story-photos{display:flex;flex-direction:column;align-items:stretch;gap:0;padding-top:0}.story-photos>.photo:first-child,.story-photos>.secondary-photo{display:block;width:100%;margin:0}.story-photos .photo-quote{width:100%;margin:1.25rem 0 3.25rem;font-size:clamp(2rem,9vw,2.5rem);line-height:1.14;text-align:left}.story-photos>.secondary-photo .photo-surface{aspect-ratio:2/3}.story-photos>.secondary-photo figcaption{padding-top:12px}}
+
+/* RSVP: espaço entre a mensagem e a ação. */
+.rsvp-section>p:not(.eyebrow){margin-bottom:24px}
+@media(max-width:640px){.rsvp-section>p:not(.eyebrow){margin-bottom:20px}}
