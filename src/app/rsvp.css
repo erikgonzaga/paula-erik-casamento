@@ -16,4 +16,4 @@
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:640px){.invitation-card{padding:22px 18px}.invitation-heading{margin-bottom:24px}.guest-response legend{font-size:1.5rem}.invitation-brand .wedding-logo{width:125px}}
 
-.private-event>p:not(.eyebrow){margin:6px 0}
+.private-event>p:not(.eyebrow){margin:1px 0}
