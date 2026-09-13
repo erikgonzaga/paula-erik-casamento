@@ -4,7 +4,7 @@ export class DatabaseError extends Error {
   constructor() { super('Database temporarily unavailable'); }
 }
 export async function database<T>(path: string, body?: unknown): Promise<T> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new DatabaseError();
   try {
@@ -19,4 +19,3 @@ export async function database<T>(path: string, body?: unknown): Promise<T> {
     return await response.json() as T;
   } catch { throw new DatabaseError(); }
 }
-

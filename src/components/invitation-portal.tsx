@@ -19,13 +19,13 @@ export function InvitationPortal({slug}:{slug?:string}){
   const [message,setMessage]=useState('');
   const [success,setSuccess]=useState('');
   const [answers,setAnswers]=useState<Record<string,string>>({});
-  const [phone,setPhone]=useState('');
+  const [phones,setPhones]=useState<Record<string,string>>({});
   const [dietary,setDietary]=useState('');
   const [notes,setNotes]=useState('');
   const started=useRef(false);
   const apply=useCallback((data:Invitation)=>{
     setInvitation(data);setAnswers(Object.fromEntries(data.guests.map(g=>[g.id,g.attendance_status])));
-    setPhone(data.rsvp?.phone||'');setDietary(data.rsvp?.dietary_restrictions||'');setNotes(data.rsvp?.notes||'');
+    setPhones(Object.fromEntries(data.guests.map(g=>[g.id,g.phone||''])));setDietary(data.rsvp?.dietary_restrictions||'');setNotes(data.rsvp?.notes||'');
   },[]);
   const load=useCallback(async()=>apply(await request<Invitation>('/api/rsvp')), [apply]);
   const access=useCallback(async(payload:{slug:string}|{code:string})=>{
@@ -44,9 +44,9 @@ export function InvitationPortal({slug}:{slug?:string}){
     setBusy(true);setMessage('');setSuccess('');
     try{
       const result=await request<{updated:boolean;submitted_at:string;updated_at:string}>('/api/rsvp',{
-        guests:invitation.guests.map(g=>({id:g.id,status:answers[g.id]})),phone,dietary_restrictions:dietary,notes,
+        guests:invitation.guests.map(g=>({id:g.id,status:answers[g.id],phone:g.type==='adult'?(phones[g.id]?.trim()||null):null})),dietary_restrictions:dietary,notes,
       });
-      apply({...invitation,guests:invitation.guests.map(g=>({...g,attendance_status:answers[g.id] as 'confirmed'|'declined'})),rsvp:{phone,dietary_restrictions:dietary,notes,submitted_at:result.submitted_at,updated_at:result.updated_at}});
+      apply({...invitation,guests:invitation.guests.map(g=>({...g,attendance_status:answers[g.id] as 'confirmed'|'declined',phone:g.type==='adult'?(phones[g.id]?.trim()||null):null})),rsvp:{dietary_restrictions:dietary,notes,submitted_at:result.submitted_at,updated_at:result.updated_at}});
       setSuccess(result.updated?'Sua resposta foi atualizada. Obrigado por nos avisar!':'Sua resposta foi salva com carinho. Obrigado!');
     }catch(error){setMessage(error instanceof Error?error.message:'Não foi possível salvar. Tente novamente.');}finally{setBusy(false);}
   }
@@ -78,15 +78,15 @@ export function InvitationPortal({slug}:{slug?:string}){
             <legend>{g.name}{g.type==='child'&&<span className="guest-type">Criança</span>}</legend>
             <label><input type="radio" name={g.id} value="confirmed" checked={answers[g.id]==='confirmed'} onChange={()=>setAnswers({...answers,[g.id]:'confirmed'})} required /><span>Sim, estarei presente</span></label>
             <label><input type="radio" name={g.id} value="declined" checked={answers[g.id]==='declined'} onChange={()=>setAnswers({...answers,[g.id]:'declined'})} required /><span>Infelizmente não poderei</span></label>
+            {g.type==='adult'&&<><label className="field-label" htmlFor={`phone-${g.id}`}>Telefone / WhatsApp</label><input id={`phone-${g.id}`} type="tel" autoComplete="tel" value={phones[g.id]||''} onChange={event=>setPhones({...phones,[g.id]:event.target.value})} maxLength={32} required /></>}
           </fieldset>)}
-          <label className="field-label" htmlFor="phone">Telefone</label><input id="phone" type="tel" autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} maxLength={32} required />
           <label className="field-label" htmlFor="dietary">Restrição alimentar <span>(opcional)</span></label><textarea id="dietary" value={dietary} onChange={e=>setDietary(e.target.value)} rows={3} maxLength={2000} aria-describedby="dietary-help" /><p className="invitation-help" id="dietary-help">Se necessário, indique a pessoa e a restrição.</p>
           <label className="field-label" htmlFor="notes">Observações <span>(opcional)</span></label><textarea id="notes" value={notes} onChange={e=>setNotes(e.target.value)} rows={3} maxLength={2000} />
           <button className="button primary invitation-submit" type="submit" disabled={!invitation.guests.length}>{busy?'Salvando…':invitation.rsvp?'Atualizar resposta':'Confirmar presença'} <ArrowUpRightIcon /></button>
         </fieldset>
       </form>
-      <section className="private-event"><p className="eyebrow">NOSSO ENCONTRO</p><h2>{invitation.event?.venue||'Buffet Napoleão — Espaço Praça'}</h2><p>21 de novembro de 2026 · Recepção às 13h</p><p>Pedimos que chegue com 15 minutos de antecedência.</p>
-        {invitation.event?<><p className="private-address">{invitation.event.address}</p><p>{invitation.event.parking}</p><p>{invitation.event.valet}</p></>:<p>O endereço completo e as orientações de chegada serão disponibilizados aqui em breve.</p>}
+      <section className="private-event"><p className="eyebrow">NOSSO ENCONTRO</p>
+        {invitation.event?<><h2>{invitation.event.venue}</h2><p className="private-address">{invitation.event.address}</p><p>21 de novembro de 2026</p><p>Recepção: {invitation.event.reception_time}</p><p>Troca de alianças: {invitation.event.ceremony_time}</p><p>{invitation.event.parking}</p><p>{invitation.event.valet}</p></>:<p>O endereço completo e as orientações de chegada serão disponibilizados aqui em breve.</p>}
       </section>
       <button className="text-link invitation-exit" type="button" onClick={()=>void leave()} disabled={busy}>Sair deste convite</button>
     </>}

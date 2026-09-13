@@ -4,9 +4,9 @@ import { createDatabase,ids } from './database-fixture.mjs';
 test('Migrations, RLS, RSVP atomicity and edits',async()=>{
  const db=await createDatabase();
  try{
-  const guests=(await db.query('select id from guests where invitation_group_id=$1 order by id',[ids.silva])).rows;
-  const answers=guests.map(g=>({...g,status:'confirmed'}));
-  const save=async(list,notes='Nossa observação')=>(await db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5) as value',[ids.silva,JSON.stringify(list),'+55 11 99999-9999','Pedro: sem lactose',notes])).rows[0].value;
+  const guests=(await db.query('select id,type from guests where invitation_group_id=$1 order by id',[ids.silva])).rows;
+  const answers=guests.map((g,index)=>({...g,status:'confirmed',phone:g.type==='adult'?`+55 11 99999-000${index+1}`:null}));
+  const save=async(list,notes='Nossa observação')=>(await db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5) as value',[ids.silva,JSON.stringify(list),list.find(g=>g.phone)?.phone??null,'Pedro: sem lactose',notes])).rows[0].value;
   const first=await save(answers);assert.equal(first.updated,false);
   assert.equal((await db.query("select count(*)::int as n from guests where attendance_status='confirmed'")).rows[0].n,3);
   const edited=await save(answers.map((g,i)=>({...g,status:i===2?'declined':'confirmed'})),'Planos atualizados');
@@ -15,12 +15,17 @@ test('Migrations, RLS, RSVP atomicity and edits',async()=>{
   const stored=(await db.query('select * from rsvps where invitation_group_id=$1',[ids.silva])).rows[0];
   assert.equal(stored.notes,'Planos atualizados');assert.equal(stored.dietary_restrictions,'Pedro: sem lactose');
   assert.equal((await db.query("select attendance_status from guests where name='Pedro Silva'")).rows[0].attendance_status,'declined');
+  const phones=(await db.query('select name,phone from guests where invitation_group_id=$1 order by id',[ids.silva])).rows;
+  assert.equal(phones[0].phone,'+55 11 99999-0001');assert.equal(phones[1].phone,'+55 11 99999-0002');assert.equal(phones[2].phone,null);
+  await save(answers.map((guest,index)=>index===0?{...guest,phone:'+55 11 99999-1111'}:guest),'Telefones atualizados');
+  assert.equal((await db.query("select phone from guests where name='João Silva'")).rows[0].phone,'+55 11 99999-1111');
   const other=(await db.query('select id from guests where invitation_group_id=$1',[ids.oliveira])).rows[0].id;
-  await assert.rejects(save([{id:other,status:'declined'},...answers.slice(1)]));
+  await assert.rejects(save([{id:other,status:'declined',phone:'+55 11 98888-2222'},...answers.slice(1)]));
+  await assert.rejects(save(answers.map(guest=>guest.type==='child'?{...guest,phone:'+55 11 97777-3333'}:guest)));
   await assert.rejects(save([answers[0],answers[0],answers[2]]));
   await assert.rejects(save(answers.slice(1)));
   await assert.rejects(save(answers.map(g=>({...g,status:'pending'}))));
-  assert.equal((await db.query('select notes from rsvps')).rows[0].notes,'Planos atualizados');
+  assert.equal((await db.query('select notes from rsvps')).rows[0].notes,'Telefones atualizados');
   for(const role of ['anon','authenticated']){
    await db.exec('set role '+role);
    for(const table of ['invitation_groups','guests','rsvps','event_private_details','invitation_rate_limits']){
@@ -40,4 +45,3 @@ test('Migrations, RLS, RSVP atomicity and edits',async()=>{
   assert.equal((await db.query("select consume_invitation_limit('test',1,60) as value")).rows[0].value,false);
  }finally{await db.close();}
 });
-

@@ -78,3 +78,5 @@ p,.hero-intro,.chapter p,.choice p:not(.eyebrow){line-height:1.35}
 /* RSVP: espaço entre a mensagem e a ação. */
 .rsvp-section>p:not(.eyebrow){margin-bottom:24px}
 @media(max-width:640px){.rsvp-section>p:not(.eyebrow){margin-bottom:20px}}
+
+.event-schedule.public-schedule{grid-template-columns:1fr}

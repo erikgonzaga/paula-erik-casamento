@@ -9,9 +9,9 @@ Migration: `supabase/migrations/202609110001_closed_rsvp.sql`.
 | Tabela | Finalidade |
 | --- | --- |
 | invitation_groups | Família, código, slug, situação ativa e identificação DEMO |
-| guests | Integrantes autorizados e confirmação individual |
+| guests | Integrantes autorizados, confirmação individual e telefone de cada adulto |
 | rsvps | Telefone, restrições, observações e datas da resposta do grupo |
-| event_private_details | Endereço e orientações privadas |
+| event_private_details | Local, endereço, horários e orientações privadas |
 | invitation_rate_limits | Contador compartilhado de tentativas |
 
 As cinco tabelas têm RLS habilitada e acesso direto negado a anon/authenticated. O servidor usa service_role e valida a sessão, o grupo ativo e todos os integrantes antes de gravar. A função save_invitation_rsvp grava em uma transação e rejeita integrantes de outro grupo, duplicados ou ausentes. Não existe cadastro livre de convidados.
@@ -28,7 +28,8 @@ Endereço e respostas só são enviados após validação no servidor; não são
 
 | Variável | Valor |
 | --- | --- |
-| NEXT_PUBLIC_SUPABASE_URL | URL da Data API do projeto |
+| NEXT_PUBLIC_SUPABASE_URL | URL da Data API do projeto, mantida para futuras integrações públicas |
+| SUPABASE_URL | URL da Data API usada exclusivamente pelo servidor para o RSVP; deve ser preenchida junto à variável pública |
 | NEXT_PUBLIC_SUPABASE_ANON_KEY | Chave anon, reservada para integrações futuras; o RSVP não consulta o banco pelo navegador |
 | SUPABASE_SERVICE_ROLE_KEY | Chave service_role, exclusivamente no servidor |
 | INVITATION_SESSION_SECRET | Segredo aleatório para assinatura da sessão |
@@ -52,7 +53,7 @@ Confira o destino antes de executar. A migration cria as tabelas e funções; n�
 
 Para desenvolvimento com o CLI e Docker: `supabase start` e `supabase db reset` aplicam migrations e seed; reset apaga os dados do banco local. Nunca use reset contra um banco com dados que precise preservar.
 
-Cadastre o endereço real em event_private_details usando o painel Table Editor: uma linha com id=true, address preenchido e venue/parking/valet revisados. Sem essa linha, o convite informa que as orientações serão disponibilizadas. Nenhum endereço real foi inventado nesta entrega.
+Cadastre os detalhes reais em event_private_details usando o painel Table Editor: uma linha com id=true, venue, address, reception_time, ceremony_time, parking e valet revisados. Sem essa linha, o convite informa que as orientações serão disponibilizadas. Nenhum endereço real foi inventado nesta entrega.
 
 ## Convites DEMO
 
@@ -78,7 +79,7 @@ Para convites reais, gere um código independente por grupo:
 node -e "console.log(require('crypto').randomBytes(16).toString('hex').toUpperCase())"
 ```
 
-Use também um sufixo aleatório independente no slug; não use apenas o nome da família. Cadastre os integrantes com o invitation_group_id correspondente pelo Table Editor enquanto não existe painel administrativo. O futuro Supabase Auth não recebe acesso automático: políticas administrativas serão implementadas na fase apropriada.
+Use também um sufixo aleatório independente no slug; não use apenas o nome da família. Cadastre os integrantes com o invitation_group_id correspondente pelo Table Editor enquanto não existe painel administrativo. O telefone fica no próprio registro de cada adulto em guests; crianças não precisam de telefone. O futuro Supabase Auth não recebe acesso automático: políticas administrativas serão implementadas na fase apropriada.
 
 ## Validação e prévia local
 

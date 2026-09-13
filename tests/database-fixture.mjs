@@ -1,11 +1,12 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 
 export async function createDatabase(){
  const db=new PGlite();
  await db.exec('create role anon; create role authenticated; create role service_role bypassrls;');
- await db.exec(await readFile(new URL('../supabase/migrations/202609110001_closed_rsvp.sql',import.meta.url),'utf8'));
+ const migrationsDir=new URL('../supabase/migrations/',import.meta.url);
+ for(const migration of (await readdir(migrationsDir)).filter(file=>file.endsWith('.sql')).sort()) await db.exec(await readFile(new URL(migration,migrationsDir),'utf8'));
  await db.exec(await readFile(new URL('../supabase/seed.sql',import.meta.url),'utf8'));
  return db;
 }
@@ -28,8 +29,8 @@ export async function fixtureServer(db,port=54329){
    }else{
     const table=url.pathname.split('/').pop();
     const fields={
-     invitation_groups:'id,name,active,is_demo',guests:'id,name,type,attendance_status',
-     rsvps:'phone,dietary_restrictions,notes,submitted_at,updated_at',event_private_details:'venue,address,parking,valet',
+     invitation_groups:'id,name,active,is_demo',guests:'id,name,type,phone,attendance_status',
+     rsvps:'dietary_restrictions,notes,submitted_at,updated_at',event_private_details:'venue,address,reception_time,ceremony_time,parking,valet',
     };
     if(!fields[table]||url.searchParams.get('select')!==fields[table])throw Error('invalid query');
     const params=[];const where=[];
@@ -46,4 +47,3 @@ export async function fixtureServer(db,port=54329){
  await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
  return server;
 }
-

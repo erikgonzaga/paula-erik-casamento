@@ -23,10 +23,9 @@ export async function getInvitation(id: string): Promise<Invitation> {
   const group = await find('id',id);
   const filter = `invitation_group_id=eq.${encodeURIComponent(id)}`;
   const [guests,rsvps,events] = await Promise.all([
-    database<Guest[]>(`guests?select=id,name,type,attendance_status&${filter}&active=eq.true&order=created_at.asc,id.asc`),
-    database<Rsvp[]>(`rsvps?select=phone,dietary_restrictions,notes,submitted_at,updated_at&${filter}&limit=1`),
-    database<NonNullable<Invitation['event']>[]>('event_private_details?select=venue,address,parking,valet&id=eq.true&limit=1'),
+    database<Guest[]>(`guests?select=id,name,type,phone,attendance_status&${filter}&active=eq.true&order=created_at.asc,id.asc`),
+    database<Rsvp[]>(`rsvps?select=dietary_restrictions,notes,submitted_at,updated_at&${filter}&limit=1`),
+    database<NonNullable<Invitation['event']>[]>('event_private_details?select=venue,address,reception_time,ceremony_time,parking,valet&id=eq.true&limit=1'),
   ]);
   return {...group,guests,rsvp:rsvps[0]??null,event:events[0]??null};
 }
-
