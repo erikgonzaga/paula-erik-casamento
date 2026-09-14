@@ -1,0 +1,106 @@
+.page{overflow:hidden}
+.hero{position:relative;max-width:820px;padding:88px 0 76px;text-align:center}
+.heroFloral{position:absolute;z-index:-1;width:210px;height:auto;right:-130px;top:18px;opacity:.48;transform:rotate(8deg)}
+.hero h1{margin:25px 0;color:var(--olive);font-size:clamp(3.146rem,7.26vw,6.655rem);line-height:.94;letter-spacing:-.055em;white-space:nowrap}
+.hero h1 em{color:var(--rose);font-weight:400;font-style:italic}
+.hero>p:not(.eyebrow){max-width:620px;margin:0 auto 15px;font-size:1.05rem;line-height:1.65}
+.catalog{padding:75px 0 110px;border-top:1px solid var(--line)}
+.catalogHeading{text-align:center}
+.catalogHeading h2{margin-top:18px}
+
+.insane{position:relative;min-height:720px;display:flex;isolation:isolate;overflow:hidden;background:#080807 url('/images/presentes/banner-presentes-insanos.png') center/cover no-repeat}
+.insane:before{content:'';position:absolute;z-index:-1;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.78) 0%,rgba(0,0,0,.5) 34%,rgba(0,0,0,.04) 64%);pointer-events:none}
+.insaneInner{display:grid;grid-template-columns:minmax(290px,.72fr) minmax(600px,1.28fr);align-items:center;gap:clamp(30px,4vw,66px);padding-block:clamp(62px,6vw,90px)}
+.insaneCopy{width:100%;max-width:520px;color:#f3efe8}
+.insaneEyebrow,.insaneTitle,.insaneDescription,.insaneSignature{color:inherit}
+.insaneEyebrow{font-family:var(--font-serif);font-size:clamp(1.35rem,2.1vw,2rem);line-height:1;letter-spacing:.15em}
+.insaneTitle{margin-top:12px;font-family:var(--font-serif);font-size:clamp(3.35rem,5vw,5.5rem);font-weight:400;line-height:.92;letter-spacing:.12em}
+.insaneDivider{display:block;width:clamp(44px,5vw,66px);height:1px;margin:clamp(27px,3vw,40px) 0 clamp(24px,2.5vw,34px);background:#f3efe8;opacity:.92}
+.insaneDescription{max-width:440px;color:rgba(243,239,232,.9);font-size:clamp(.95rem,1.15vw,1.14rem);line-height:1.6}
+.insaneSignature{margin-top:clamp(28px,3.2vw,44px);color:#f3efe8;font-family:'Segoe Script','Brush Script MT',cursive;font-size:clamp(2rem,3vw,3.35rem);font-style:italic;line-height:1.15;transform:rotate(-2deg);transform-origin:left center}
+
+.medals{width:min(760px,100%);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;justify-self:end;align-self:end}
+.medalCard{min-width:0;height:100%;display:flex;flex-direction:column;padding:19px 16px 17px;text-align:center;border:1px solid #d7cfc3;border-radius:5px;background:#faf8f1;box-shadow:0 11px 28px #0006}
+.medalCard h3{margin:0 0 14px;color:#282019;font-family:var(--font-serif);font-size:.87rem;font-weight:400;letter-spacing:.035em;white-space:nowrap}
+.medalImage{position:relative;width:100%;aspect-ratio:1/1;margin:0 auto 14px}
+.medalImage img{object-fit:contain}
+.medalDetails{width:100%;display:flex;flex:1;flex-direction:column;align-items:center}
+.medalLabel{color:#5c5048;font-size:.61rem;letter-spacing:.16em}
+.medalDescription{min-height:4.35em;margin:7px 0 0;color:#5c5048;font-family:var(--font-serif);font-size:.76rem;line-height:1.45}
+.medalPrice{margin:10px 0 13px;color:#282019;font-family:var(--font-serif);font-size:1rem}
+.medalCard button{width:100%;min-height:37px;margin-top:auto;border:0;border-radius:999px;color:#fff;font-size:.68rem;letter-spacing:.09em;cursor:pointer;transition:transform 180ms ease,filter 180ms ease,box-shadow 180ms ease}
+.medalCard button:hover{transform:translateY(-1px);filter:brightness(1.06);box-shadow:0 5px 12px #0003}
+.buttonBronze{background:#865e48}
+.buttonPrata{background:#5e5e5e}
+.buttonOuro{background:#a57b29}
+.insaneClosing{grid-column:2;width:min(560px,100%);justify-self:center;margin-top:-18px;color:#f3efe8;text-align:center}
+.motorcycleDivider{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px}
+.motorcycleDivider span{height:1px;background:rgba(243,239,232,.58)}
+.motorcycleDivider svg{width:50px;height:28px;fill:none;stroke:#b98a4b;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.insaneClosing p{margin-top:15px;color:inherit;font-size:.72rem;line-height:1.7;letter-spacing:.22em}
+.closingAccent{display:block;width:42px;height:1px;margin:17px auto 0;background:#b98a4b}
+
+.return{padding:94px 0 105px;text-align:center}
+.return h2{margin:20px 0 28px}
+.return a{display:inline-block;padding:10px 0;border-bottom:1px solid var(--olive);color:var(--olive);font-size:.875rem}
+
+@media(max-width:1180px){
+  .insane{min-height:900px;background-position:center top;background-size:100% auto}
+  .insane:before{background:linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.4) 48%,transparent 72%),linear-gradient(180deg,transparent 0 260px,rgba(8,8,7,.78) 400px,#080807 560px)}
+  .insaneInner{grid-template-columns:1fr;align-content:start;gap:0;padding-block:54px 46px}
+  .insaneCopy{width:46%;max-width:430px}
+  .insaneEyebrow{font-size:clamp(1.15rem,2.2vw,1.55rem)}
+  .insaneTitle{font-size:clamp(2.8rem,5.5vw,4.2rem)}
+  .insaneDescription{font-size:clamp(.84rem,1.45vw,1rem)}
+  .insaneSignature{font-size:clamp(1.8rem,3.5vw,2.8rem)}
+  .medals{width:min(760px,82%);margin-top:clamp(120px,17vw,200px)}
+  .medalCard{padding-inline:12px}
+  .medalCard h3{font-size:.74rem}
+  .insaneClosing{grid-column:1;width:min(560px,82%);margin-top:32px}
+}
+
+@media(max-width:820px){
+  .insane{min-height:1040px}
+  .insaneInner{padding-top:42px}
+  .insaneCopy{width:54%}
+  .insaneDescription{line-height:1.5}
+  .medals{width:100%;max-width:620px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:clamp(110px,19vw,150px)}
+  .medalCard:last-child{width:calc(50% - 7px);grid-column:1/-1;justify-self:center}
+}
+
+@media(max-width:767px){
+  .hero{padding:60px 0}
+  .heroFloral{width:140px;right:-72px;top:12px}
+  .catalog{padding:58px 0 72px}
+  .insane{min-height:0;display:block;background:#080807 url('/images/presentes/banner-presentes-insanos.png') 58% top/cover no-repeat}
+  .insane:before{display:block;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.57),rgba(0,0,0,.68) 38%,rgba(0,0,0,.76))}
+  .insaneInner{position:relative;z-index:1;width:100%;display:grid;grid-template-columns:1fr;padding:0 0 52px}
+  .insaneCopy{width:88%;max-width:520px;display:flex;flex-direction:column;margin-inline:auto;padding-block:46px 30px}
+  .insaneEyebrow{font-size:1.2rem}
+  .insaneTitle{margin-top:9px;font-size:clamp(3rem,14vw,4rem);letter-spacing:.09em}
+  .insaneDivider{margin-block:25px 22px}
+  .insaneDescription{max-width:none;font-size:1rem;line-height:1.6}
+  .insaneSignature{margin-top:28px;font-size:clamp(2rem,9vw,2.8rem)}
+  .insaneDescription{order:5;margin-top:24px}
+  .insaneSignature{order:4}
+  .medals{width:min(92%,430px);grid-template-columns:1fr;gap:16px;margin:18px auto 0}
+  .medalCard{height:auto;min-height:202px;display:grid;grid-template-columns:minmax(0,40%) minmax(0,60%);grid-template-areas:'image title' 'image details';align-items:center;column-gap:12px;padding:16px 14px}
+  .medalCard:last-child{width:auto;grid-column:auto;justify-self:stretch}
+  .medalCard h3{grid-area:title;margin:0 0 5px;font-size:clamp(.73rem,3.3vw,.9rem);white-space:normal}
+  .medalImage{grid-area:image;width:100%;margin:0;aspect-ratio:1}
+  .medalDetails{grid-area:details;align-self:start;justify-content:center;min-width:0}
+  .medalLabel{font-size:clamp(.53rem,2.4vw,.62rem)}
+  .medalDescription{min-height:0;margin-top:5px;font-size:clamp(.64rem,2.8vw,.75rem);line-height:1.35}
+  .medalPrice{margin:8px 0 10px;font-size:.92rem}
+  .medalCard button{width:min(100%,180px);min-height:35px;margin-top:0}
+  .insaneClosing{grid-column:1;width:min(88%,430px);margin-top:42px}
+  .motorcycleDivider{gap:14px}
+  .motorcycleDivider svg{width:47px;height:27px}
+  .insaneClosing p{margin-top:14px;font-size:clamp(.62rem,2.8vw,.72rem);letter-spacing:.18em}
+  .return{padding:68px 0 75px}
+}
+
+@media(max-width:390px){
+  .medalCard{min-height:190px;grid-template-columns:minmax(0,39%) minmax(0,61%);column-gap:9px;padding:13px 11px}
+  .medalCard button{font-size:.62rem;letter-spacing:.075em}
+}

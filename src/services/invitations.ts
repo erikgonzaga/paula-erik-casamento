@@ -4,16 +4,19 @@ import { InvitationError } from '@/lib/invitations/validation';
 import type { Invitation, Guest, Rsvp } from '@/lib/invitations/types';
 type Group = Pick<Invitation,'id'|'name'|'active'|'is_demo'> & {slug:string};
 const selection = 'id,name,slug,active,is_demo';
+function validateGroup(group:Group|undefined) {
+  if (!group) throw new InvitationError(404, 'Não encontramos este convite. Confira o código e tente novamente.');
+  if (!group.active) throw new InvitationError(403, 'Este convite está inativo. Fale com Paula e Erik para receber ajuda.');
+  return group;
+}
 async function find(field: 'code'|'slug'|'id', value: string): Promise<Group> {
   const rows = await database<Group[]>(`invitation_groups?select=${selection}&${field}=eq.${encodeURIComponent(value)}&limit=1`);
-  if (!rows[0]) throw new InvitationError(404, 'Não encontramos este convite. Confira o código e tente novamente.');
-  if (!rows[0].active) throw new InvitationError(403, 'Este convite está inativo. Fale com Paula e Erik para receber ajuda.');
-  return rows[0];
+  return validateGroup(rows[0]);
 }
 export function findInvitationByCode(code: string) {
-  const normalized = code.trim().toUpperCase();
-  if (!/^[A-Z0-9]{20,64}$/.test(normalized)) throw new InvitationError(404,'Não encontramos este convite. Confira o código e tente novamente.');
-  return find('code',normalized);
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{20,64}$/.test(normalizedCode)) throw new InvitationError(404,'Não encontramos este convite. Confira o código e tente novamente.');
+  return database<Group[]>(`invitation_groups?select=${selection}&code=eq.${encodeURIComponent(normalizedCode)}&limit=1`).then(rows=>validateGroup(rows[0]));
 }
 export function findInvitationBySlug(slug: string) {
   if (!/^[a-z0-9-]{20,150}$/.test(slug)) throw new InvitationError(404,'Não encontramos este convite. Confira o link e tente novamente.');

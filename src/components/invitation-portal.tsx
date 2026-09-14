@@ -68,7 +68,7 @@ export function InvitationPortal({slug}:{slug?:string}){
     {message&&<p className="invitation-message invitation-error" role="alert">{message}</p>}
     {success&&<p className="invitation-message" role="status">{success}</p>}
     {busy&&!invitation&&<p className="invitation-loading" role="status">Abrindo seu convite…</p>}
-    {!invitation&&!busy&&<form className="invitation-card code-form" onSubmit={e=>{e.preventDefault();void access({code});}}>
+    {!invitation&&!busy&&<form className="invitation-card code-form" onSubmit={e=>{e.preventDefault();void access({code:code.trim().toUpperCase()});}}>
       <label htmlFor="invitation-code">Código do convite</label>
       <input id="invitation-code" value={code} onChange={e=>setCode(e.target.value)} autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={64} required autoComplete="off" />
       <button className="button primary" type="submit">Abrir meu convite <ArrowUpRightIcon /></button>

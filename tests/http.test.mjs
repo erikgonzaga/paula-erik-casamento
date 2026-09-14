@@ -12,9 +12,12 @@ test('HTTP: closed invitations, privacy, responses and cross-group attacks',asyn
  assert.equal((await api('/api/invitations/access',{body:{code:'INVALID'}})).status,404);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.inactive}})).status,403);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.silva},origin:'https://outside.example'})).status,403);
- const open=await api('/api/invitations/access',{body:{code:`  ${codes.silva.toLowerCase()}  `}});
+ const upperCaseOpen=await api('/api/invitations/access',{body:{code:'6D88EECF1CDEA14190ABA9B50B63DBA3'}});
+ assert.equal(upperCaseOpen.status,200);
+ const open=await api('/api/invitations/access',{body:{code:'6d88eecf1cdea14190aba9b50b63dba3'}});
  assert.equal(open.status,200);
- assert.equal((await open.clone().json()).slug,'demo-familia-silva-'+codes.silva.toLowerCase());
+ const expectedSlug='demo-familia-silva-'+codes.silva.toLowerCase();
+ assert.equal((await upperCaseOpen.json()).slug,expectedSlug);assert.equal((await open.clone().json()).slug,expectedSlug);
  const cookie=open.headers.get('set-cookie').split(';')[0];
  assert.match(open.headers.get('set-cookie'),/HttpOnly/i);
  assert.match(open.headers.get('set-cookie'),/SameSite=strict/i);

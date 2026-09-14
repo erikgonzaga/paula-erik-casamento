@@ -11,7 +11,7 @@ export async function createDatabase(){
  return db;
 }
 export const ids={silva:'10000000-0000-4000-8000-000000000001',oliveira:'10000000-0000-4000-8000-000000000002'};
-export const codes={silva:'D7C82F4A916B30E58A62',oliveira:'A93E7062C84F15B9D620',inactive:'B41F893A620D75E9C038'};
+export const codes={silva:'6D88EECF1CDEA14190ABA9B50B63DBA3',oliveira:'A93E7062C84F15B9D620',inactive:'B41F893A620D75E9C038'};
 export async function fixtureServer(db,port=54329){
  // TEST ADAPTER ONLY. The production app always connects to Supabase REST.
  const server=createServer(async(req,res)=>{

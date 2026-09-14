@@ -16,13 +16,13 @@ export async function POST(request:Request) {
     await limit(request,'access');
     if(!body || typeof body!=='object' || Array.isArray(body) || Object.keys(body).length!==1) throw new InvitationError(400,'Informe o código do seu convite.');
     const code=typeof body.code==='string'?body.code:null;
-    const usingCode=code!==null;
+    const normalizedCode=code?.trim().toUpperCase()??null;
+    const usingCode=normalizedCode!==null;
     if(usingCode) {
-      const normalized=code.trim().toUpperCase();
-      stage='code_normalized';debugAccess(stage,{length:normalized.length,valid_format:/^[A-Z0-9]{20,64}$/.test(normalized)});
+      stage='code_normalized';debugAccess(stage,{length:normalizedCode.length,valid_format:/^[A-Z0-9]{20,64}$/.test(normalizedCode)});
     }
     stage='group_lookup';
-    const group=usingCode ? await findInvitationByCode(code)
+    const group=usingCode ? await findInvitationByCode(normalizedCode)
       : typeof body.slug==='string' ? await findInvitationBySlug(body.slug) : null;
     if(!group) throw new InvitationError(400,'Informe o código do seu convite.');
     stage='group_found';debugAccess(stage,{access:usingCode?'code':'slug'});
