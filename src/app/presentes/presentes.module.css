@@ -44,27 +44,27 @@
 .return h2{margin:20px 0 28px}
 .return a{display:inline-block;padding:10px 0;border-bottom:1px solid var(--olive);color:var(--olive);font-size:.875rem}
 
-@media(max-width:1180px){
-  .insane{min-height:900px;background-position:center top;background-size:100% auto}
-  .insane:before{background:linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.4) 48%,transparent 72%),linear-gradient(180deg,transparent 0 260px,rgba(8,8,7,.78) 400px,#080807 560px)}
+@media(min-width:768px) and (max-width:1199px){
+  .insane{min-height:0;background-position:58% center;background-size:cover;background-repeat:no-repeat}
+  .insane:before{background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,.48) 48%,rgba(0,0,0,.78) 100%),linear-gradient(90deg,rgba(0,0,0,.8) 0%,rgba(0,0,0,.38) 52%,rgba(0,0,0,.16) 100%)}
   .insaneInner{grid-template-columns:1fr;align-content:start;gap:0;padding-block:54px 46px}
   .insaneCopy{width:46%;max-width:430px}
   .insaneEyebrow{font-size:clamp(1.15rem,2.2vw,1.55rem)}
   .insaneTitle{font-size:clamp(2.8rem,5.5vw,4.2rem)}
   .insaneDescription{font-size:clamp(.84rem,1.45vw,1rem)}
   .insaneSignature{font-size:clamp(1.8rem,3.5vw,2.8rem)}
-  .medals{width:min(760px,82%);margin-top:clamp(120px,17vw,200px)}
+  .medals{width:min(760px,82%);margin-top:clamp(48px,6vw,76px)}
   .medalCard{padding-inline:12px}
   .medalCard h3{font-size:.74rem}
   .insaneClosing{grid-column:1;width:min(560px,82%);margin-top:32px}
 }
 
-@media(max-width:820px){
-  .insane{min-height:1040px}
+@media(min-width:768px) and (max-width:820px){
+  .insane{min-height:0}
   .insaneInner{padding-top:42px}
   .insaneCopy{width:54%}
   .insaneDescription{line-height:1.5}
-  .medals{width:100%;max-width:620px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:clamp(110px,19vw,150px)}
+  .medals{width:100%;max-width:620px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:clamp(46px,6vw,58px)}
   .medalCard:last-child{width:calc(50% - 7px);grid-column:1/-1;justify-self:center}
 }
 
@@ -81,8 +81,6 @@
   .insaneDivider{margin-block:25px 22px}
   .insaneDescription{max-width:none;font-size:1rem;line-height:1.6}
   .insaneSignature{margin-top:28px;font-size:clamp(2rem,9vw,2.8rem)}
-  .insaneDescription{order:5;margin-top:24px}
-  .insaneSignature{order:4}
   .medals{width:min(92%,430px);grid-template-columns:1fr;gap:16px;margin:18px auto 0}
   .medalCard{height:auto;min-height:202px;display:grid;grid-template-columns:minmax(0,40%) minmax(0,60%);grid-template-areas:'image title' 'image details';align-items:center;column-gap:12px;padding:16px 14px}
   .medalCard:last-child{width:auto;grid-column:auto;justify-self:stretch}
