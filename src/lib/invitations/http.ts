@@ -11,9 +11,11 @@ export function failure(error:unknown) {
 }
 export function assertSameOrigin(request:Request) {
   const origin=request.headers.get('origin');
-  const allowed=process.env.APP_ORIGIN || new URL(request.url).origin;
-  const local=process.env.NODE_ENV!=='production' && origin && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
-  if (!origin || (origin!==allowed && !local)) throw new InvitationError(403,'Reabra esta página para continuar.');
+  const parseOrigin=(value:string)=>{try{return new URL(value).origin;}catch{return null;}};
+  const allowed=parseOrigin(process.env.APP_ORIGIN||new URL(request.url).origin);
+  const received=origin?parseOrigin(origin):null;
+  const local=process.env.NODE_ENV!=='production' && received && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(received);
+  if (!received || !allowed || (received!==allowed && !local)) throw new InvitationError(403,'Reabra esta página para continuar.');
 }
 export async function readBody(request:Request):Promise<unknown> {
   if(!request.headers.get('content-type')?.startsWith('application/json')) throw new InvitationError(400,'Não foi possível ler o formulário.');
@@ -37,4 +39,3 @@ export async function limit(request:Request,scope:string,maximum=12) {
   const allowed=await database<boolean>('rpc/consume_invitation_limit',{p_bucket:bucket,p_limit:maximum,p_seconds:600});
   if(!allowed) throw new InvitationError(429,'Muitas tentativas em pouco tempo. Aguarde dez minutos e tente novamente.');
 }
-

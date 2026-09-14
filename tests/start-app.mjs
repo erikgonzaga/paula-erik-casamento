@@ -7,7 +7,7 @@ const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-
  stdio:'inherit',windowsHide:true,
  env:{...process.env,SUPABASE_URL:fixtureUrl,
  SUPABASE_SERVICE_ROLE_KEY:'test-service-role',INVITATION_SESSION_SECRET:'local-tests-only-session-secret-123456789',
- APP_ORIGIN:origin,VERCEL:'0'},
+ APP_ORIGIN:process.env.TEST_APP_ORIGIN||origin,VERCEL:'0'},
 });
 process.on('SIGINT',()=>child.kill());
 process.on('SIGTERM',()=>child.kill());

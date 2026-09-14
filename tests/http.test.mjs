@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { codes } from './database-fixture.mjs';
 const base=process.env.TEST_APP_URL||'http://127.0.0.1:3101';
-async function api(path,{body,cookie,origin=base,method}={}){
+const requestOrigin=process.env.TEST_REQUEST_ORIGIN||base;
+async function api(path,{body,cookie,origin=requestOrigin,method}={}){
  return fetch(base+path,{method:method||(body===undefined?'GET':'POST'),headers:{Origin:origin,...(body===undefined?{}:{'Content-Type':'application/json'}),...(cookie?{Cookie:cookie}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 }
 test('HTTP: closed invitations, privacy, responses and cross-group attacks',async()=>{
@@ -11,8 +12,9 @@ test('HTTP: closed invitations, privacy, responses and cross-group attacks',asyn
  assert.equal((await api('/api/invitations/access',{body:{code:'INVALID'}})).status,404);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.inactive}})).status,403);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.silva},origin:'https://outside.example'})).status,403);
- const open=await api('/api/invitations/access',{body:{code:codes.silva}});
+ const open=await api('/api/invitations/access',{body:{code:`  ${codes.silva.toLowerCase()}  `}});
  assert.equal(open.status,200);
+ assert.equal((await open.clone().json()).slug,'demo-familia-silva-'+codes.silva.toLowerCase());
  const cookie=open.headers.get('set-cookie').split(';')[0];
  assert.match(open.headers.get('set-cookie'),/HttpOnly/i);
  assert.match(open.headers.get('set-cookie'),/SameSite=strict/i);

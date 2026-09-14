@@ -29,7 +29,7 @@ export async function fixtureServer(db,port=54329){
    }else{
     const table=url.pathname.split('/').pop();
     const fields={
-     invitation_groups:'id,name,active,is_demo',guests:'id,name,type,phone,attendance_status',
+     invitation_groups:'id,name,slug,active,is_demo',guests:'id,name,type,phone,attendance_status',
      rsvps:'dietary_restrictions,notes,submitted_at,updated_at',event_private_details:'venue,address,reception_time,ceremony_time,parking,valet',
     };
     if(!fields[table]||url.searchParams.get('select')!==fields[table])throw Error('invalid query');

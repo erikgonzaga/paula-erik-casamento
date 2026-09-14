@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { WeddingLogo } from './wedding-logo';
 import { ArrowUpRightIcon } from './icons';
 import type { Invitation } from '@/lib/invitations/types';
@@ -13,6 +14,7 @@ async function request<T>(url:string,body?:unknown,method?:string):Promise<T>{
   return data as T;
 }
 export function InvitationPortal({slug}:{slug?:string}){
+  const router=useRouter();
   const [invitation,setInvitation]=useState<Invitation|null>(null);
   const [code,setCode]=useState('');
   const [busy,setBusy]=useState(true);
@@ -30,10 +32,14 @@ export function InvitationPortal({slug}:{slug?:string}){
   const load=useCallback(async()=>apply(await request<Invitation>('/api/rsvp')), [apply]);
   const access=useCallback(async(payload:{slug:string}|{code:string})=>{
     setBusy(true);setMessage('');setSuccess('');setInvitation(null);
-    try{await request('/api/invitations/access',payload);await load();}
+    try{
+      const result=await request<{ok:true;slug:string}>('/api/invitations/access',payload);
+      if('code' in payload) {router.push(`/convite/${encodeURIComponent(result.slug)}`);return;}
+      await load();
+    }
     catch(error){setMessage(error instanceof Error?error.message:'Não foi possível abrir seu convite. Tente novamente.');}
     finally{setBusy(false);}
-  },[load]);
+  },[load,router]);
   useEffect(()=>{
     if(started.current)return;started.current=true;
     const opening=slug?request('/api/invitations/access',{slug}).then(()=>request<Invitation>('/api/rsvp')):request<Invitation>('/api/rsvp');
