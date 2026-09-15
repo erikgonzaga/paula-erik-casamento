@@ -39,7 +39,7 @@ h2,h3,.text-link,.count-label{overflow-wrap:anywhere}.event-section>*{min-width:
 .hero-photo .photo-surface img{object-position:50% 45%}
 .photo-surface,.closing-photo{background:var(--paper)}
 .dream-photo{-webkit-mask-image:linear-gradient(to right,transparent,#000 var(--photo-feather-strength),#000 calc(100% - var(--photo-feather-strength)),transparent),linear-gradient(to bottom,transparent,#000 var(--photo-feather-strength),#000 calc(100% - var(--photo-feather-strength)),transparent);mask-image:linear-gradient(to right,transparent,#000 var(--photo-feather-strength),#000 calc(100% - var(--photo-feather-strength)),transparent),linear-gradient(to bottom,transparent,#000 var(--photo-feather-strength),#000 calc(100% - var(--photo-feather-strength)),transparent);-webkit-mask-composite:source-in;mask-composite:intersect;filter:none}
-.footer{border:0;outline:0;padding:68px 0 24px;background:#f6f4ec}
+.footer{border:0;outline:0;padding:68px 0 24px;background:var(--paper)}
 .footer>.eyebrow,.footer>blockquote,.footer>.footer-verse{padding-inline:6%}
 .footer blockquote{margin-bottom:35px}
 .footer-landscape{display:block;width:min(1200px,100%);height:auto;object-fit:contain;margin:0 auto;filter:none;box-shadow:none}
