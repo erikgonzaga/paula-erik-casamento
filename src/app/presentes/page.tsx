@@ -2,31 +2,18 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Navigation } from '@/components/navigation';
 import { GiftList } from '@/components/gift-list';
+import { formatGiftPrice } from '@/lib/gifts/format';
+import { isInsaneGift, isRegularGift } from '@/lib/gifts/types';
+import { getActiveGifts } from '@/services/gifts';
 import styles from './presentes.module.css';
 
-const insaneGifts = [
-  {
-    metal: 'Bronze',
-    price: 'R$ 100,00',
-    description: 'Uma contribuição simbólica para seguir na estrada.',
-    image: '/images/presentes/moeda-bronze-final.png',
-    buttonId: 'contribuir-bronze',
-  },
-  {
-    metal: 'Prata',
-    price: 'R$ 250,00',
-    description: 'Um gesto especial para acompanhar o próximo capítulo.',
-    image: '/images/presentes/moeda-prata-final.png',
-    buttonId: 'contribuir-prata',
-  },
-  {
-    metal: 'Ouro',
-    price: 'R$ 500,00',
-    description: 'Uma grande força para esta nova caminhada.',
-    image: '/images/presentes/moeda-ouro-final.png',
-    buttonId: 'contribuir-ouro',
-  },
-];
+export const dynamic = 'force-dynamic';
+
+const insaneButtonClasses: Record<string, string> = {
+  'moeda-bronze': styles.buttonBronze,
+  'moeda-prata': styles.buttonPrata,
+  'moeda-ouro': styles.buttonOuro,
+};
 
 function MotorcycleIcon() {
   return (
@@ -38,7 +25,11 @@ function MotorcycleIcon() {
   );
 }
 
-export default function PresentsPage() {
+export default async function PresentsPage() {
+  const gifts = await getActiveGifts();
+  const regularGifts = gifts.filter(isRegularGift);
+  const insaneGifts = gifts.filter(isInsaneGift);
+
   return (
     <>
       <a className="skip-link" href="#conteudo-presentes">
@@ -75,7 +66,7 @@ export default function PresentsPage() {
               <em>vêm pela frente.</em>
             </h2>
           </div>
-          <GiftList />
+          <GiftList gifts={regularGifts} />
         </section>
 
         <section className={styles.insane} aria-labelledby="presentes-insanos-title">
@@ -95,22 +86,22 @@ export default function PresentsPage() {
 
             <div className={styles.medals}>
               {insaneGifts.map((gift) => (
-                <article key={gift.metal} className={styles.medalCard}>
-                  <h3>MOEDA {gift.metal.toUpperCase()}</h3>
+                <article key={gift.id} className={styles.medalCard}>
+                  <h3>{gift.name.toUpperCase()}</h3>
                   <div className={styles.medalImage}>
-                    <Image
-                      src={gift.image}
-                      alt={`Moeda ${gift.metal} dos Presentes Insanos`}
+                    {gift.image_url&&<Image
+                      src={gift.image_url}
+                      alt={`${gift.name} dos Presentes Insanos`}
                       fill
                       unoptimized
                       sizes="(max-width: 700px) 68vw, (max-width: 1100px) 24vw, 210px"
-                    />
+                    />}
                   </div>
                   <div className={styles.medalDetails}>
                     <p className={styles.medalLabel}>PRESENTE INSANO</p>
-                    <p className={styles.medalDescription}>{gift.description}</p>
-                    <p className={styles.medalPrice}>{gift.price}</p>
-                    <button id={gift.buttonId} className={styles[`button${gift.metal}`]} type="button">
+                    <p className={styles.medalDescription}>{gift.description??''}</p>
+                    <p className={styles.medalPrice}>{formatGiftPrice(gift.price)}</p>
+                    <button id={`contribuir-${gift.slug.replace(/^moeda-/, '')}`} className={insaneButtonClasses[gift.slug]??styles.buttonBronze} type="button">
                       CONTRIBUIR
                     </button>
                   </div>

@@ -19,8 +19,9 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 ## Presentes
 
-- Substituir dados mockados por modelo persistente apenas quando a etapa de backend for aprovada.
+- Após confirmar o projeto remoto e o backup, aplicar a migration `202609140001_gifts_catalog.sql` sem executar o seed de desenvolvimento em produção.
 - Definir valores e itens finais do catálogo comum.
+- Cadastrar o catálogo definitivo no Supabase; o arquivo `supabase/seeds/gifts-development.sql` contém apenas os itens provisórios usados em desenvolvimento.
 - Definir PIX real, recebedor, confirmação e eventual link externo parcelado. Nenhum dado financeiro deve ser inventado ou commitado.
 - Definir comportamento dos botões “CONTRIBUIR” da seção Insanos.
 - Implementar controle contra dupla escolha/compra somente após decidir a regra de negócio.

@@ -49,19 +49,21 @@ A conversa registra testes do fluxo real em produção, inclusive uma correção
 
 ### Fase 3 — Lista de Presentes
 
-A estrutura visual está implementada em `/presentes`:
+A estrutura visual está implementada e aprovada em `/presentes`:
 
 - hero editorial;
 - filtros sem recarregar a página;
-- nove presentes mockados;
+- catálogo regular carregado do Supabase;
 - detalhe em modal;
 - seção especial “Presentes Insanos”.
 
-Não há pagamento, PIX, banco de presentes, estoque ou controle de compra. Os botões comuns apenas mostram uma mensagem de “em breve”; os botões Insanos ainda não executam contribuição.
+O catálogo agora possui a migration versionada `202609140001_gifts_catalog.sql`, leitura pública limitada por RLS a registros ativos e busca server-side com a chave `anon`. Presentes regulares e Insanos vêm da mesma tabela, mas permanecem separados na renderização. O seed `supabase/seeds/gifts-development.sql` é opcional, separado e exclusivo para ambientes descartáveis de desenvolvimento.
+
+Não há pagamento, PIX, registro de contribuições, estoque ou controle de compra. Os botões comuns apenas mostram uma mensagem de “em breve”; os botões Insanos ainda não executam contribuição.
 
 ### Fases futuras
 
-- Integração real de presentes e meios de contribuição.
+- Integração real de contribuições e meios de pagamento.
 - Administração protegida para convidados, convites, RSVP e presentes.
 - Gestão de conteúdo, se ainda desejada.
 - Auditoria final, publicação consolidada e domínio.
@@ -91,7 +93,7 @@ O endereço de produção informado durante o desenvolvimento é `https://paula-
 - Ícones de seta são SVGs finos e herdam `currentColor`.
 - O RSVP mantém presença individual. Telefones passaram do grupo para cada adulto; crianças não recebem campo de telefone.
 - A Home não revela o buffet nem detalhes de chegada.
-- A página de presentes é editorial e leve. Os filtros “Todos”, “Casa”, “Viagem” e “Roupas e Acessórios” atuam apenas sobre os presentes comuns.
+- A página de presentes é editorial e leve. Os filtros “Todos”, “Festa”, “Casa” e “Viagem” atuam apenas sobre os presentes comuns.
 - “Presentes Insanos” é independente dos filtros e sempre fica ao final do catálogo.
 - A referência motociclista é deliberadamente restrita à seção Insanos, com fundo escuro, medalhas e detalhes metálicos.
 - No mobile, a fotografia da seção Insanos é um único background contínuo, não um banner separado.

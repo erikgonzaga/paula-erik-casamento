@@ -68,7 +68,7 @@ As fotos vêm do ensaio de Raquel Reis. A linguagem aprovada privilegia luz quen
 | `pe-22.jpg` | Fundo de “Eu escolhi você”. |
 | `pe-26.jpg` | Encerramento horizontal da Home. |
 
-`pe-6.jpg`, `pe-32.jpg` e `pe-33.jpg` continuam no acervo e também abastecem os presentes mockados quando referenciadas em `gift-list.tsx`.
+`pe-6.jpg`, `pe-32.jpg` e `pe-33.jpg` continuam no acervo e podem abastecer o catálogo de presentes quando seus caminhos forem cadastrados em `gifts.image_url`.
 
 ### Ornamentos de papelaria
 

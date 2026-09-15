@@ -25,7 +25,7 @@ O ambiente recomendado é Node.js 22 ou superior.
 | Rota | Tipo | Responsabilidade |
 | --- | --- | --- |
 | `/` | pública, estática | Home, história, pessoas, dados públicos mínimos, links para RSVP e presentes. |
-| `/presentes` | pública, estática + interação client-side | Catálogo mockado, filtros, modal e seção Insanos. |
+| `/presentes` | pública, dinâmica no servidor + interação client-side | Catálogo ativo do Supabase, filtros, modal e seção Insanos. |
 | `/rsvp` | privada por sessão/código | Entrada por código e formulário do convite. |
 | `/convite/[slug]` | privada por sessão/slug | Abre a mesma experiência do RSVP usando um slug individual. |
 | `/api/invitations/access` | servidor | Valida código ou slug, aplica limite, cria/remove sessão e retorna o slug correto. |
@@ -72,11 +72,16 @@ Arquivos:
 - `src/app/presentes/page.tsx`;
 - `src/app/presentes/presentes.module.css`;
 - `src/components/gift-list.tsx`;
-- `src/components/gift-list.module.css`.
+- `src/components/gift-list.module.css`;
+- `src/services/gifts.ts`;
+- `src/lib/gifts/types.ts` e `src/lib/gifts/format.ts`;
+- `src/lib/supabase/public-server.ts`.
 
-Os nove presentes comuns estão hardcoded em `gift-list.tsx`, distribuídos entre Casa, Viagem e Roupas e Acessórios. O filtro é client-side e não recarrega a página. “Presentear” abre um modal; “Continuar” apenas anuncia meios de pagamento futuros.
+`/presentes` é renderizada dinamicamente e chama `getActiveGifts` no servidor. A consulta REST usa a chave `anon`, solicita somente registros com `active=true` e ordena por `display_order` e `id`. Nenhuma chave `service_role` ou consulta ao Supabase é enviada ao componente cliente.
 
-Os três presentes Insanos estão hardcoded em `page.tsx`, fora dos filtros. Os botões “CONTRIBUIR” não possuem integração. O símbolo da moto é um SVG local no componente da página.
+`GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. Os botões de presentes continuam sem integração financeira. O símbolo da moto permanece como SVG local no componente da página.
+
+Os enquadramentos aprovados das fotografias continuam em um mapa de apresentação no componente. O seed opcional `supabase/seeds/gifts-development.sql` reproduz o catálogo provisório anterior para testes locais, mas não é executado pelo fluxo normal de seed nem deve ser aplicado automaticamente em produção.
 
 ## RSVP e convite fechado
 
@@ -117,6 +122,8 @@ Nunca edite migrations já aplicadas. O estado versionado é construído nesta o
 1. `202609110001_closed_rsvp.sql` — grupos, convidados, RSVP, detalhes privados, rate limits, RLS e funções iniciais.
 2. `202609130001_private_event_schedule.sql` — horários de recepção e cerimônia nos detalhes privados.
 3. `202609130002_guest_phone.sql` — telefone por convidado, compatibilidade do campo legado e nova implementação transacional de `save_invitation_rsvp`.
+4. `202609140001_gifts_catalog.sql` — catálogo de presentes, constraints, índice de ordenação, trigger de atualização e leitura pública restrita por RLS.
+5. `202609150001_gifts_party_category.sql` — substitui a categoria regular `clothing` por `party`, preservando `insanos` como categoria exclusiva dos presentes especiais.
 
 Tabelas:
 
@@ -127,10 +134,11 @@ Tabelas:
 | `rsvps` | Restrição alimentar, observações e timestamps; telefone legado mantido por compatibilidade. |
 | `event_private_details` | Local e orientações privadas. |
 | `invitation_rate_limits` | Baldes de limitação de tentativas. |
+| `gifts` | Catálogo de presentes regulares e Insanos, sem dados de contribuição ou pagamento. |
 
-Todas usam RLS com acesso público negado. A aplicação acessa REST com `service_role` apenas em módulos `server-only`. `save_invitation_rsvp` valida o grupo e todos os IDs antes de qualquer update.
+Todas usam RLS. As tabelas de convites permanecem com acesso público totalmente negado e são acessadas com `service_role` apenas em módulos `server-only`; `save_invitation_rsvp` valida o grupo e todos os IDs antes de qualquer update. Em `gifts`, `anon` e `authenticated` recebem somente `SELECT`, e a policy permite enxergar apenas registros ativos. Escritas continuam exclusivas da `service_role` no servidor.
 
-`supabase/seed.sql` é somente para desenvolvimento. Não aplique seed DEMO em produção e não distribua seus códigos.
+`supabase/seed.sql` é somente para desenvolvimento do RSVP. O catálogo provisório fica em `supabase/seeds/gifts-development.sql`, que não integra o seed automático. Não aplique seeds de desenvolvimento em produção e não distribua códigos de convite.
 
 ## Variáveis de ambiente
 
@@ -147,7 +155,7 @@ Os valores não pertencem ao Git ou à documentação. `.env.local` está ignora
 
 ## Testes
 
-`npm test` executa `tests/rsvp.test.mjs` com migrations reais em PGlite. Cobre atomicidade, edição, telefone por adulto, criança sem telefone, ataque entre grupos, RLS, grupo inativo e rate limiting.
+`npm test` executa `tests/rsvp.test.mjs` e `tests/gifts.test.mjs` com migrations reais em PGlite. Além do RSVP, cobre constraints do catálogo, leitura pública somente de presentes ativos e bloqueio de `INSERT`, `UPDATE` e `DELETE` para `anon` e `authenticated`.
 
 O teste HTTP requer três processos:
 
