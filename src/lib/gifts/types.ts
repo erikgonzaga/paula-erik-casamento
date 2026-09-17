@@ -1,6 +1,7 @@
 export type GiftCategory = 'house' | 'travel' | 'party' | 'insanos';
 export type RegularGiftCategory = Exclude<GiftCategory, 'insanos'>;
 export type GiftType = 'regular' | 'insanos';
+export type FundingMode = 'goal' | 'open' | 'fixed';
 
 export type Gift = {
   id: string;
@@ -8,7 +9,8 @@ export type Gift = {
   slug: string;
   description: string | null;
   category: GiftCategory;
-  price: number;
+  target_amount: number | null;
+  funding_mode: FundingMode;
   image_url: string | null;
   featured: boolean;
   display_order: number;

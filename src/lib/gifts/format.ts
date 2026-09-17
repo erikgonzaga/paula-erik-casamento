@@ -3,6 +3,6 @@ const currency = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 });
 
-export function formatGiftPrice(price: number) {
-  return currency.format(price);
+export function formatGiftAmount(amount: number | null) {
+  return amount === null ? 'Contribuição livre' : currency.format(amount);
 }

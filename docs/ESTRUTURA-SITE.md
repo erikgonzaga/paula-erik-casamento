@@ -79,9 +79,13 @@ Arquivos:
 
 `/presentes` é renderizada dinamicamente e chama `getActiveGifts` no servidor. A consulta REST usa a chave `anon`, solicita somente registros com `active=true` e ordena por `display_order` e `id`. Nenhuma chave `service_role` ou consulta ao Supabase é enviada ao componente cliente.
 
+O serviço agora consulta `target_amount` e `funding_mode`, valida o valor por modalidade e preserva a apresentação monetária existente. `open` sem meta exibe “Contribuição livre” no mesmo elemento. A RPC `get_gift_progress()` prepara a leitura agregada futura, mas ainda não é chamada pela página. Veja [Metas e contribuições](PRESENTES-CONTRIBUICOES.md) para estrutura, privacidade e concorrência.
+
 `GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. Os botões de presentes continuam sem integração financeira. O símbolo da moto permanece como SVG local no componente da página.
 
 Os enquadramentos aprovados das fotografias continuam em um mapa de apresentação no componente. O seed opcional `supabase/seeds/gifts-development.sql` reproduz o catálogo provisório anterior para testes locais, mas não é executado pelo fluxo normal de seed nem deve ser aplicado automaticamente em produção.
+
+O catálogo definitivo aprovado quanto ao conteúdo está em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, fora de migrations, do seed automático e da aplicação. Contém 38 registros, ainda não executados nesta etapa, com `ON CONFLICT (slug) DO UPDATE`. Ver [Catálogo definitivo](CATALOGO-DEFINITIVO.md). Regulares aguardam imagens (`image_url=null`); medalhas mantêm assets e slugs de apresentação existentes.
 
 ## RSVP e convite fechado
 
@@ -124,6 +128,7 @@ Nunca edite migrations já aplicadas. O estado versionado é construído nesta o
 3. `202609130002_guest_phone.sql` — telefone por convidado, compatibilidade do campo legado e nova implementação transacional de `save_invitation_rsvp`.
 4. `202609140001_gifts_catalog.sql` — catálogo de presentes, constraints, índice de ordenação, trigger de atualização e leitura pública restrita por RLS.
 5. `202609150001_gifts_party_category.sql` — substitui a categoria regular `clothing` por `party`, preservando `insanos` como categoria exclusiva dos presentes especiais.
+6. `202609170001_gift_funding.sql` — renomeia `price` para `target_amount`, adiciona modalidades, contribuições privadas, validação transacional e RPC agregada.
 
 Tabelas:
 
@@ -135,6 +140,7 @@ Tabelas:
 | `event_private_details` | Local e orientações privadas. |
 | `invitation_rate_limits` | Baldes de limitação de tentativas. |
 | `gifts` | Catálogo de presentes regulares e Insanos, sem dados de contribuição ou pagamento. |
+| `gift_contributions` | Contribuições individuais privadas, status e dados de agradecimento; sem integração financeira implementada. |
 
 Todas usam RLS. As tabelas de convites permanecem com acesso público totalmente negado e são acessadas com `service_role` apenas em módulos `server-only`; `save_invitation_rsvp` valida o grupo e todos os IDs antes de qualquer update. Em `gifts`, `anon` e `authenticated` recebem somente `SELECT`, e a policy permite enxergar apenas registros ativos. Escritas continuam exclusivas da `service_role` no servidor.
 

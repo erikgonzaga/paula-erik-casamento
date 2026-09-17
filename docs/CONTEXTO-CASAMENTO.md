@@ -59,7 +59,9 @@ A estrutura visual está implementada e aprovada em `/presentes`:
 
 O catálogo agora possui a migration versionada `202609140001_gifts_catalog.sql`, leitura pública limitada por RLS a registros ativos e busca server-side com a chave `anon`. Presentes regulares e Insanos vêm da mesma tabela, mas permanecem separados na renderização. O seed `supabase/seeds/gifts-development.sql` é opcional, separado e exclusivo para ambientes descartáveis de desenvolvimento.
 
-Não há pagamento, PIX, registro de contribuições, estoque ou controle de compra. Os botões comuns apenas mostram uma mensagem de “em breve”; os botões Insanos ainda não executam contribuição.
+A migration `202609170001_gift_funding.sql` prepara metas (`goal`), valor livre (`open`) e contribuições fixas (`fixed`), com registros privados em `gift_contributions` e progresso público agregado. O casal informou a aplicação bem-sucedida desta migration e de `202609150001_gifts_party_category.sql` no Supabase. Não há pagamento real, integração PIX, endpoint de contribuição, estoque ou controle de compra na interface. Os botões comuns apenas mostram uma mensagem de “em breve”; os botões Insanos ainda não executam contribuição. Detalhes em `docs/PRESENTES-CONTRIBUICOES.md`.
+
+O catálogo definitivo de 38 presentes foi preparado para revisão, sem execução, no seed manual `supabase/catalogs/20260917_gifts_definitive_v1.sql`. A viagem é para Gramado. Valores, descrições e decisões de imagens estão em `docs/CATALOGO-DEFINITIVO.md`.
 
 ### Fases futuras
 

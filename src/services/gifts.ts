@@ -9,7 +9,8 @@ const selection = [
   'slug',
   'description',
   'category',
-  'price',
+  'target_amount',
+  'funding_mode',
   'image_url',
   'featured',
   'display_order',
@@ -25,8 +26,13 @@ export async function getActiveGifts(): Promise<Gift[]> {
   if (!Array.isArray(rows)) throw new PublicDatabaseError();
 
   return rows.map((gift) => {
-    const price = Number(gift.price);
-    if (!Number.isFinite(price) || price <= 0) throw new PublicDatabaseError();
-    return { ...gift, price };
+    const target_amount = gift.target_amount === null ? null : Number(gift.target_amount);
+    if (!['goal', 'open', 'fixed'].includes(gift.funding_mode)) throw new PublicDatabaseError();
+    if (gift.funding_mode === 'open') {
+      if (target_amount !== null) throw new PublicDatabaseError();
+    } else if (target_amount === null || !Number.isFinite(target_amount) || target_amount <= 0) {
+      throw new PublicDatabaseError();
+    }
+    return { ...gift, target_amount };
   });
 }

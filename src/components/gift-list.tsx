@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { formatGiftPrice } from '@/lib/gifts/format';
+import { formatGiftAmount } from '@/lib/gifts/format';
 import type { RegularGift, RegularGiftCategory } from '@/lib/gifts/types';
 import { ArrowUpRightIcon } from './icons';
 import styles from './gift-list.module.css';
@@ -41,7 +41,7 @@ function imagePosition(gift: RegularGift) {
 function GiftCard({gift,onSelect}:{gift:RegularGift;onSelect:(gift:RegularGift)=>void}){
   return <article className={styles.card}>
     <div className={styles.imageWrap}>{gift.image_url&&<Image src={gift.image_url} alt="" fill sizes="(max-width: 640px) 88vw, (max-width: 1000px) 42vw, 27vw" style={{objectFit:'cover',objectPosition:imagePosition(gift)}} />}</div>
-    <div className={styles.cardBody}><p className={styles.category}>{categoryLabels[gift.category]}</p><h2>{gift.name}</h2><p className={styles.price}>{formatGiftPrice(gift.price)}</p><button type="button" className={styles.giftButton} onClick={()=>onSelect(gift)}>Presentear <ArrowUpRightIcon /></button></div>
+    <div className={styles.cardBody}><p className={styles.category}>{categoryLabels[gift.category]}</p><h2>{gift.name}</h2><p className={styles.price}>{formatGiftAmount(gift.target_amount)}</p><button type="button" className={styles.giftButton} onClick={()=>onSelect(gift)}>Presentear <ArrowUpRightIcon /></button></div>
   </article>;
 }
 
@@ -59,7 +59,7 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
     {selected&&<div className={styles.backdrop} role="presentation" onMouseDown={()=>setSelected(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" onMouseDown={event=>event.stopPropagation()}>
       <button className={styles.close} type="button" aria-label="Fechar detalhes do presente" onClick={()=>setSelected(null)}>×</button>
       <div className={styles.modalImage}>{selected.image_url&&<Image src={selected.image_url} alt="" fill sizes="(max-width: 640px) 88vw, 460px" style={{objectFit:'cover',objectPosition:imagePosition(selected)}} />}</div>
-      <div className={styles.modalBody}><p className={styles.category}>{categoryLabels[selected.category]}</p><h2 id="gift-detail-title">{selected.name}</h2><p className={styles.price}>{formatGiftPrice(selected.price)}</p><p className={styles.description}>{selected.description??''}</p>{continued?<p className={styles.notice} role="status">Em breve, você poderá escolher PIX ou pagamento parcelado por aqui.</p>:<button type="button" className={styles.continue} onClick={()=>setContinued(true)}>Continuar <ArrowUpRightIcon /></button>}</div>
+      <div className={styles.modalBody}><p className={styles.category}>{categoryLabels[selected.category]}</p><h2 id="gift-detail-title">{selected.name}</h2><p className={styles.price}>{formatGiftAmount(selected.target_amount)}</p><p className={styles.description}>{selected.description??''}</p>{continued?<p className={styles.notice} role="status">Em breve, você poderá escolher PIX ou pagamento parcelado por aqui.</p>:<button type="button" className={styles.continue} onClick={()=>setContinued(true)}>Continuar <ArrowUpRightIcon /></button>}</div>
     </section></div>}
   </>;
 }

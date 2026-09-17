@@ -19,12 +19,12 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 ## Presentes
 
-- Após confirmar o projeto remoto e o backup, aplicar a migration `202609140001_gifts_catalog.sql` sem executar o seed de desenvolvimento em produção.
-- Definir valores e itens finais do catálogo comum.
-- Cadastrar o catálogo definitivo no Supabase; o arquivo `supabase/seeds/gifts-development.sql` contém apenas os itens provisórios usados em desenvolvimento.
+- As migrations `202609140001_gifts_catalog.sql`, `202609150001_gifts_party_category.sql` e `202609170001_gift_funding.sql` foram informadas pelo casal como aplicadas em produção. São históricas e não devem ser editadas.
+- Revisar descrições e aprovar a execução futura do catálogo definitivo: `supabase/catalogs/20260917_gifts_definitive_v1.sql`, com 38 itens/valores definidos. Não foi executado nesta etapa. Não usar o seed fictício.
+- Receber imagens dos 35 presentes regulares, revisar títulos completos das medalhas em prévia e definir aplicação do texto editorial de Gramado sem redesenhar a página. Ver `CATALOGO-DEFINITIVO.md`.
 - Definir PIX real, recebedor, confirmação e eventual link externo parcelado. Nenhum dado financeiro deve ser inventado ou commitado.
 - Definir comportamento dos botões “CONTRIBUIR” da seção Insanos.
-- Implementar controle contra dupla escolha/compra somente após decidir a regra de negócio.
+- A proteção transacional de metas e presente único está preparada no banco. Antes de pagamentos reais: testar concorrência com conexões PostgreSQL independentes, implementar idempotência, definir expiração/reserva de pendências, estorno e tratamento de confirmação que excederia a meta. Ver `PRESENTES-CONTRIBUICOES.md`.
 - Avaliar otimização das imagens das moedas: os arquivos ativos são grandes e usam `unoptimized`. Preservar qualidade, transparência e aparência ao otimizar.
 - Remover versões antigas e duplicadas de moedas em `public/images/presentes` depois de confirmar que nenhuma referência externa depende delas.
 - Finalizar a validação visual do background Insanos em 390, 430, 768, 820, 1024, 1180, 1280 e 1440 px. A regra intermediária foi ajustada para `cover`, posição `58% center`, overlay gradual e margens menores, mas a rodada completa de capturas exatas ainda deve ser concluída.
