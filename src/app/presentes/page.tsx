@@ -15,6 +15,11 @@ const insaneButtonClasses: Record<string, string> = {
   'moeda-ouro': styles.buttonOuro,
 };
 
+function MedalTitle({ name }: { name: string }) {
+  const parts = name.match(/^(Presente Insano) (— Medalha (?:Bronze|Prata|Ouro))$/i);
+  return <h3>{parts ? <>{parts[1].toUpperCase()}{' '}<span className={styles.medalTitleLine}>{parts[2].toUpperCase()}</span></> : name.toUpperCase()}</h3>;
+}
+
 function MotorcycleIcon() {
   return (
     <svg viewBox="0 0 64 32" aria-hidden="true" focusable="false">
@@ -87,7 +92,7 @@ export default async function PresentsPage() {
             <div className={styles.medals}>
               {insaneGifts.map((gift) => (
                 <article key={gift.id} className={styles.medalCard}>
-                  <h3>{gift.name.toUpperCase()}</h3>
+                  <MedalTitle name={gift.name} />
                   <div className={styles.medalImage}>
                     {gift.image_url&&<Image
                       src={gift.image_url}

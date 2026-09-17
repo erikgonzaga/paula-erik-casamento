@@ -21,7 +21,8 @@
 
 .medals{width:min(760px,100%);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;justify-self:end;align-self:end}
 .medalCard{min-width:0;height:100%;display:flex;flex-direction:column;padding:19px 16px 17px;text-align:center;border:1px solid #d7cfc3;border-radius:5px;background:#faf8f1;box-shadow:0 11px 28px #0006}
-.medalCard h3{margin:0 0 14px;color:#282019;font-family:var(--font-serif);font-size:.87rem;font-weight:400;letter-spacing:.035em;white-space:nowrap}
+.medalCard h3{min-width:0;max-width:100%;margin:0 0 14px;color:#282019;font-family:var(--font-serif);font-size:.87rem;font-weight:400;letter-spacing:.035em;white-space:normal;overflow-wrap:anywhere;text-align:center}
+@media(min-width:768px){.medalTitleLine{display:block}}
 .medalImage{position:relative;width:100%;aspect-ratio:1/1;margin:0 auto 14px}
 .medalImage img{object-fit:contain}
 .medalDetails{width:100%;display:flex;flex:1;flex-direction:column;align-items:center}

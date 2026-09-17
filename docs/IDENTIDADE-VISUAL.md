@@ -130,3 +130,5 @@ Composição:
 
 A ordem textual nunca deve ser invertida por `order`: introdução sempre antes de “Gratidão, irmãos!”.
 
+Os títulos completos das medalhas permitem wrapping em todos os breakpoints. A partir de 768 px, a apresentação quebra antes de “— MEDALHA …”; no mobile, mantém o fluxo inline e a quebra natural. Fonte, centralização e nomes do banco são preservados. Validado em navegador local em 375, 430, 768, 1024, 1280 e 1440 px, com duas linhas e sem texto fora dos cards. O teste opcional `tests/presentes-titles.mjs` usa catálogo HTTP em memória e Playwright, sem acessar o Supabase.
+
