@@ -97,7 +97,7 @@ try {
         objectFit: image ? getComputedStyle(image).objectFit : null,
       };
     }));
-    const expectedRatio = width <= 640 ? 2 : 1 / 1.04;
+    const expectedRatio = 2;
     assert.ok(imageAreas.every(area => Math.abs(area.width / area.height - expectedRatio) < 0.02),
       `${width}px: unexpected image area ratio`);
     assert.ok(imageAreas.every(area => Math.abs(area.height - imageAreas[0].height) < 0.5),
