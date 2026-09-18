@@ -112,9 +112,9 @@ try {
     const partial = card('Nossa geladeira');
     assert.equal(await partial.getByRole('progressbar').getAttribute('aria-valuenow'), '35');
     const partialText = (await partial.innerText()).replace(/\u00a0/g, ' ');
-    assert.match(partialText, /Meta: R\$ 3\.500/);
-    assert.match(partialText, /R\$ 1\.225 arrecadados/);
-    assert.match(partialText, /Faltam R\$ 2\.275/);
+    assert.match(partialText, /Meta: R\$ 3\.500,00/);
+    assert.match(partialText, /R\$ 1\.225,00 arrecadados/);
+    assert.match(partialText, /Faltam R\$ 2\.275,00/);
     const achieved = card('Nossa hospedagem em Gramado');
     assert.match(await achieved.innerText(), /Meta alcançada ❤️/);
     assert.equal(await achieved.getByRole('progressbar').getAttribute('aria-valuenow'), '100');
@@ -126,9 +126,14 @@ try {
     assert.equal(await card('Presente fixo de teste').getByRole('progressbar').count(), 0);
     assert.equal(await page.locator('section[aria-labelledby="presentes-insanos-title"]').getByRole('progressbar').count(), 0);
     assert.equal(await card('Limite inferior de teste').getByRole('progressbar').getAttribute('aria-valuenow'), '0');
-    assert.equal(await card('Limite superior de teste').getByRole('progressbar').getAttribute('aria-valuenow'), '100');
-    assert.ok(await card('Progresso ausente').getByRole('button').isDisabled());
-    assert.equal(await card('Progresso ausente').getByRole('progressbar').count(), 0);
+    const upperLimit = card('Limite superior de teste');
+    assert.equal(await upperLimit.getByRole('progressbar').getAttribute('aria-valuenow'), '100');
+    assert.match(await upperLimit.innerText(), /Meta alcançada ❤️/);
+    assert.equal(await upperLimit.getByRole('button').count(), 0);
+    const missing = card('Progresso ausente');
+    assert.equal(await missing.getByRole('progressbar').getAttribute('aria-valuenow'), '0');
+    assert.match((await missing.innerText()).replace(/\u00a0/g, ' '), /R\$ 0,00 arrecadados/);
+    assert.ok(await missing.getByRole('button').isEnabled());
     // Check text glyph bounds, not just containers with overflow hidden.
     assert.ok(await cards.evaluateAll(elements => elements.every(element => {
       const bounds = element.getBoundingClientRect();

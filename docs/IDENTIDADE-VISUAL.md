@@ -102,7 +102,9 @@ Não use `↗`, `→`, `➜`, `⤴` ou emoji como ícone novo.
 
 A página mantém fundo marfim, hero centralizado, filtros em pills, cards leves e modal editorial. O título “Lista de Presentes” está em uma linha quando houver espaço e recebeu aumento de tamanho aprovado; nomes dos presentes ficam limitados a uma linha com reticências.
 
-Metas regulares usam barra discreta de 6 px, preenchimento `--olive` e trilho `--cream`, com valores e percentual textuais. Textos usam `--ink`, `--olive` e `--muted`, sem cores novas. Valores inteiros são exibidos em pt-BR sem centavos desnecessários; centavos reais são preservados. O texto de Gramado aparece centralizado no filtro Viagem, com título serifado. Sem redesenho das imagens/cards ou mudanças na seção Insanos.
+Metas regulares usam barra discreta de 6 px, preenchimento `--olive` e trilho `--cream`, com valores e percentual textuais. Textos usam `--ink`, `--olive` e `--muted`, sem cores novas. Valores monetários são exibidos em pt-BR com duas casas decimais. O texto de Gramado aparece centralizado no filtro Viagem, com título serifado. Sem redesenho das imagens/cards ou mudanças na seção Insanos.
+
+O formulário de contribuição usa o modal editorial existente, campos marfim com borda `--line`, resumos em `--cream` e ação `--olive`. Sugestões de valor permanecem discretas e arredondadas. O diálogo dos Insanos é renderizado fora dos cards para não herdar nem alterar sua composição visual aprovada.
 
 ### Presentes Insanos
 

@@ -26,6 +26,7 @@ O ambiente recomendado é Node.js 22 ou superior.
 | --- | --- | --- |
 | `/` | pública, estática | Home, história, pessoas, dados públicos mínimos, links para RSVP e presentes. |
 | `/presentes` | pública, dinâmica no servidor + interação client-side | Catálogo ativo do Supabase, filtros, modal e seção Insanos. |
+| `/api/gift-contributions` | servidor, escrita pública validada | Revalida o presente e cria exclusivamente contribuição `pending`; não confirma pagamento. |
 | `/rsvp` | privada por sessão/código | Entrada por código e formulário do convite. |
 | `/convite/[slug]` | privada por sessão/slug | Abre a mesma experiência do RSVP usando um slug individual. |
 | `/api/invitations/access` | servidor | Valida código ou slug, aplica limite, cria/remove sessão e retorna o slug correto. |
@@ -72,16 +73,25 @@ Arquivos:
 - `src/app/presentes/page.tsx`;
 - `src/app/presentes/presentes.module.css`;
 - `src/components/gift-list.tsx`;
+- `src/components/gift-contribution-form.tsx` e `src/components/insane-contribution-button.tsx`;
 - `src/components/gift-list.module.css`;
 - `src/services/gifts.ts`;
 - `src/lib/gifts/types.ts` e `src/lib/gifts/format.ts`;
+- `src/lib/gifts/contribution.ts`;
+- `src/services/gift-contributions.ts`;
 - `src/lib/supabase/public-server.ts`.
 
 `/presentes` é renderizada dinamicamente e chama `getActiveGifts` no servidor. A consulta REST usa a chave `anon`, solicita somente registros com `active=true` e ordena por `display_order` e `id`. Nenhuma chave `service_role` ou consulta ao Supabase é enviada ao componente cliente.
 
-O serviço consulta o catálogo e `rpc/get_gift_progress` em paralelo no servidor, usando a chave pública e `cache: no-store`. `combineGiftProgress` associa `gifts.id` a `gift_id`, preserva a ordem, normaliza números e envia somente os agregados de presentes `goal` aos componentes. Dados ausentes/inválidos ou falha da RPC mostram indisponibilidade, nunca um 0% inventado. Não existe consulta frontend a contribuições individuais. Veja [Metas e contribuições](PRESENTES-CONTRIBUICOES.md).
+O serviço consulta o catálogo e `rpc/get_gift_progress` em paralelo no servidor, usando a chave pública e `cache: no-store`. `combineGiftProgress` associa `gifts.id` a `gift_id`, preserva a ordem, normaliza números e envia somente os agregados de presentes `goal` aos componentes. Quando uma resposta válida da RPC não contém uma meta específica, ela recebe progresso zero derivado de `gifts.target_amount`; falha total ou linha inválida continua aparecendo como indisponível, sem inventar uma leitura bem-sucedida. Não existe consulta frontend a contribuições individuais. Veja [Metas e contribuições](PRESENTES-CONTRIBUICOES.md).
 
 Cards e modal regulares mostram meta e progresso para `goal`; `open` mostra convite para valor livre, sem totais; `fixed` mostra somente seu valor. Metas alcançadas continuam visíveis sem CTA normal. O filtro Viagem revela o texto editorial de Gramado. Insanos preservam seu visual e valores vindos do catálogo. Os dados são atualizados a cada requisição da página; não há assinatura realtime nem pagamento implementado.
+
+O formulário gera um UUID v4 por tentativa e envia JSON para `POST /api/gift-contributions`. O Route Handler exige mesma origem, limita tamanho e frequência, valida campos e delega ao serviço servidor. O serviço relê `gifts` com `service_role`, calcula um fingerprint SHA-256 canônico e consulta a idempotência persistida antes de qualquer nova escrita. Para uma chave nova, relê o progresso atual de `goal` e insere `payment_status=pending`, `payment_method=pix`, `confirmed_at=null`, `external_reference=null` e expiração de 15 minutos. A resposta contém somente `{ok,payment_status}`; chave e fingerprint nunca retornam. A chave administrativa permanece em módulos `server-only`.
+
+Valores digitados são aceitos como texto pt-BR, convertidos para centavos inteiros e enviados ao PostgreSQL como decimal canônico; zero, negativos, valores inválidos e montantes acima do restante são rejeitados. Para `fixed`, qualquer valor do navegador é ignorado e `target_amount` relido do banco é a única fonte. Telefones brasileiros são armazenados como `+55` seguido de DDD e número. Insanos exigem `vest_name`.
+
+Retries com a mesma chave e fingerprint retornam a tentativa existente; a mesma chave com payload materialmente diferente recebe conflito. Antes de ler uma tentativa, o servidor chama a rotina protegida que persiste `pending` vencido como `expired`. Se o `INSERT` falhar, uma nova consulta também resolve a corrida de duas requisições idênticas. O trigger de metas continua sendo a proteção final. Somente `confirmed` entra na RPC; `pending` e `expired` não reservam nem aumentam saldo.
 
 `GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. Os botões de presentes continuam sem integração financeira. O símbolo da moto permanece como SVG local no componente da página.
 
@@ -131,6 +141,8 @@ Nunca edite migrations já aplicadas. O estado versionado é construído nesta o
 4. `202609140001_gifts_catalog.sql` — catálogo de presentes, constraints, índice de ordenação, trigger de atualização e leitura pública restrita por RLS.
 5. `202609150001_gifts_party_category.sql` — substitui a categoria regular `clothing` por `party`, preservando `insanos` como categoria exclusiva dos presentes especiais.
 6. `202609170001_gift_funding.sql` — renomeia `price` para `target_amount`, adiciona modalidades, contribuições privadas, validação transacional e RPC agregada.
+7. `202609170002_gift_contribution_idempotency_expiry.sql` — aplicada em produção conforme informado pelo casal; adiciona UUID de idempotência, fingerprint privado, expiração em 15 minutos, status `expired` e rotina protegida de expiração.
+8. `202609170003_fix_gift_contribution_expiry.sql` — ainda não aplicada remotamente; corrige a rotina protegida para aceitar o UUID privado da contribuição ou sua chave de idempotência, preservando filtros de status e prazo.
 
 Tabelas:
 
@@ -165,7 +177,7 @@ Os valores não pertencem ao Git ou à documentação. `.env.local` está ignora
 
 `npm test` executa `tests/rsvp.test.mjs` e `tests/gifts.test.mjs` com migrations reais em PGlite. Além do RSVP, cobre constraints do catálogo, leitura pública somente de presentes ativos e bloqueio de `INSERT`, `UPDATE` e `DELETE` para `anon` e `authenticated`.
 
-Também executa `tests/gift-progress.test.mjs`: associação por ID, 0/parcial/100%, limites visuais, indisponibilidade, formatação pt-BR e exclusão dos totais open/fixed das props. O teste opcional de navegador `tests/presentes-titles.mjs` cobre esses estados na página, modal, Gramado e overflow em 375, 430, 768, 1024, 1280 e 1440 px usando HTTP local em memória, sem Supabase. Executar com `node tests/presentes-titles.mjs <caminho-do-modulo-playwright> [pasta-de-capturas]`; requer Microsoft Edge instalado.
+Também executa `tests/gift-progress.test.mjs`: associação por ID, 0/parcial/100%, limites visuais, linha de progresso ausente, indisponibilidade, formatação pt-BR e exclusão dos totais open/fixed das props. `tests/gift-contribution.test.mjs` cobre validação, normalização, `goal/open/fixed`, Insanos, concorrência, retries e conflito de idempotência. `tests/gifts.test.mjs` aplica a migration nova em memória e verifica unicidade, 15 minutos, transição para `expired`, RLS e progresso apenas confirmado. O teste opcional de navegador `tests/presentes-titles.mjs` cobre os estados de progresso com HTTP local em memória. `tests/gift-contribution-browser.mjs` intercepta todo POST e valida UUIDs novos por tentativa, bloqueio de duplo envio e Insanos em 375, 390, 430, 768, 1024, 1280 e 1440 px, sem escrever no Supabase.
 
 O teste HTTP requer três processos:
 

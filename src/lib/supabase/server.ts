@@ -31,3 +31,33 @@ export async function database<T>(path: string, body?: unknown): Promise<T> {
     throw new DatabaseError();
   }
 }
+
+export async function databaseCommand(path: string, body: unknown): Promise<void> {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    debugDatabase('configuration_missing');
+    throw new DatabaseError();
+  }
+  try {
+    const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/${path}`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      debugDatabase('request_failed', { endpoint: path.split('?')[0], status: response.status });
+      throw new DatabaseError();
+    }
+  } catch (error) {
+    if (!(error instanceof DatabaseError)) debugDatabase('request_failed', { endpoint: path.split('?')[0], status: 0 });
+    throw new DatabaseError();
+  }
+}

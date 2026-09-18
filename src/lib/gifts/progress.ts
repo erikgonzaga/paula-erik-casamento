@@ -10,7 +10,19 @@ function numeric(value: unknown): number | null {
   return Number.isFinite(result) ? result : null;
 }
 
-// Missing/invalid RPC data is unavailable, never invented as zero progress.
+function zeroProgress(gift: Gift): GiftProgress | null {
+  if (gift.target_amount === null || !Number.isFinite(gift.target_amount) || gift.target_amount <= 0) return null;
+  return {
+    target_amount: gift.target_amount,
+    total_raised: 0,
+    percentage: 0,
+    remaining_amount: gift.target_amount,
+    goal_reached: false,
+  };
+}
+
+// A missing goal row in a successful RPC response is a safe zero; RPC failures
+// and malformed rows remain unavailable so the UI never invents a successful read.
 export function combineGiftProgress(gifts: Gift[], rows: unknown): Gift[] {
   const byId = new Map<string, Record<string, unknown>>();
   if (Array.isArray(rows)) {
@@ -22,19 +34,25 @@ export function combineGiftProgress(gifts: Gift[], rows: unknown): Gift[] {
     let progress: GiftProgress | null = null;
     const row = byId.get(gift.id);
     // Do not serialize open/fixed totals into public component props.
-    if (gift.funding_mode === 'goal' && row) {
-      const target = numeric(row.target_amount);
-      const raised = numeric(row.total_raised);
-      const percentage = numeric(row.percentage);
-      const remaining = numeric(row.remaining_amount);
-      if (target !== null && target > 0 && target === gift.target_amount &&
-          raised !== null && raised >= 0 && percentage !== null &&
-          remaining !== null && remaining >= 0 && typeof row.goal_reached === 'boolean') {
-        progress = {
-          target_amount: target, total_raised: raised,
-          percentage: row.goal_reached ? 100 : clampPercentage(percentage),
-          remaining_amount: remaining, goal_reached: row.goal_reached,
-        };
+    if (gift.funding_mode === 'goal') {
+      if (!row && Array.isArray(rows)) {
+        progress = zeroProgress(gift);
+      } else if (row) {
+        const target = numeric(row.target_amount);
+        const raised = numeric(row.total_raised);
+        const percentage = numeric(row.percentage);
+        const remaining = numeric(row.remaining_amount);
+        if (target !== null && target > 0 && target === gift.target_amount &&
+            raised !== null && raised >= 0 && percentage !== null &&
+            remaining !== null && remaining >= 0 && typeof row.goal_reached === 'boolean') {
+          const visualPercentage = clampPercentage(percentage);
+          const goalReached = row.goal_reached || visualPercentage >= 100;
+          progress = {
+            target_amount: target, total_raised: raised,
+            percentage: goalReached ? 100 : visualPercentage,
+            remaining_amount: remaining, goal_reached: goalReached,
+          };
+        }
       }
     }
     return { ...gift, progress };

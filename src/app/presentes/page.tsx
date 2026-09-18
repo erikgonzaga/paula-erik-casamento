@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Navigation } from '@/components/navigation';
 import { GiftList } from '@/components/gift-list';
+import { InsaneContributionButton } from '@/components/insane-contribution-button';
 import { formatGiftAmount } from '@/lib/gifts/format';
 import { isInsaneGift, isRegularGift } from '@/lib/gifts/types';
 import { getActiveGifts } from '@/services/gifts';
@@ -109,9 +110,7 @@ export default async function PresentsPage() {
                     <p className={styles.medalLabel}>PRESENTE INSANO</p>
                     <p className={styles.medalDescription}>{gift.description??''}</p>
                     <p className={styles.medalPrice}>{formatGiftAmount(gift.target_amount)}</p>
-                    <button id={`contribuir-${gift.slug.replace(/^moeda-/, '')}`} className={insaneButtonClasses[gift.slug]??styles.buttonBronze} type="button">
-                      CONTRIBUIR
-                    </button>
+                    <InsaneContributionButton gift={gift} className={insaneButtonClasses[gift.slug]??styles.buttonBronze} />
                   </div>
                 </article>
               ))}

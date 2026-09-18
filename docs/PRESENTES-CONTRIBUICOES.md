@@ -1,6 +1,6 @@
 # Metas e contribuições — etapa de arquitetura
 
-Migration: `supabase/migrations/202609170001_gift_funding.sql`. O casal informou sua aplicação bem-sucedida no Supabase, assim como a da migration `202609150001_gifts_party_category.sql`. Ambas agora são históricas e imutáveis. O catálogo definitivo já está no Supabase conforme informado pelo casal; a referência versionada permanece em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, sem reexecução nesta etapa; ver `CATALOGO-DEFINITIVO.md`.
+Migrations estruturais aplicadas conforme informado pelo casal: `supabase/migrations/202609170001_gift_funding.sql` e `supabase/migrations/202609170002_gift_contribution_idempotency_expiry.sql`. A correção `202609170003_fix_gift_contribution_expiry.sql` existe apenas no repositório e ainda não foi aplicada no Supabase. O catálogo definitivo permanece inalterado.
 
 ## Catálogo final
 
@@ -25,7 +25,7 @@ O UPDATE da migration apenas classifica registros Insanos eventualmente existent
 | contributor_name | Texto obrigatório, 1–150 caracteres após trim |
 | contributor_phone | Texto opcional, 8–32 caracteres após trim |
 | amount | numeric(10,2), positivo, não NaN |
-| payment_status | pending (default), confirmed, cancelled, failed |
+| payment_status | pending (default), confirmed, cancelled, failed, expired |
 | payment_method | pix ou external; apenas classificação, sem integração |
 | external_reference | Texto opcional, único quando não nulo, 1–255 caracteres, sem espaços nas extremidades nem caracteres de controle |
 | message | Texto opcional, até 2000 caracteres |
@@ -33,8 +33,11 @@ O UPDATE da migration apenas classifica registros Insanos eventualmente existent
 | regional_division | Texto opcional, até 150 caracteres |
 | created_at / updated_at | timestamptz obrigatório, default now(); updated_at atualizado por trigger |
 | confirmed_at | timestamptz, obrigatório somente quando confirmed; nulo nos demais estados |
+| idempotency_key | UUID obrigatório e único por tentativa |
+| request_fingerprint | SHA-256 hexadecimal obrigatório; nunca exposto publicamente |
+| expires_at | timestamptz obrigatório, exatamente created_at + 15 minutos |
 
-Não existe endpoint público de escrita nem lista de agradecimentos nesta etapa. Uma lista oficial futura deverá ser server-side e filtrar apenas `confirmed`. Não há ranking público.
+Não existe escrita direta pelo cliente nem lista pública de contribuições. O endpoint servidor validado é a única entrada. Uma lista oficial futura deverá ser server-side e filtrar apenas `confirmed`. Não há ranking público.
 
 O índice parcial `contributions_external_reference_uidx` impede repetição da mesma referência em qualquer presente/status; várias referências nulas são permitidas, inclusive para PIX manual. O servidor futuro deve aplicar trim e usar um namespace estável de provedor/conta quando necessário. Maiúsculas/minúsculas são preservadas porque identificadores externos são opacos. O banco rejeita referências malformadas em vez de alterá-las silenciosamente. A unicidade é uma base de idempotência, não substitui verificação de webhook, confirmação atômica nem tratamento de repetição. Não liberar/reutilizar referências canceladas ao integrar pagamentos.
 
@@ -52,15 +55,25 @@ RLS de `gifts` permanece intacta: público lê somente ativos. `gift_contributio
 
 Para open/fixed, percentual e restante são nulos e meta alcançada é falso. Não retorna IDs individuais, quantidades, nomes, telefones, coletes ou mensagens. A página agora consulta essa RPC no servidor e combina por gift_id com o catálogo. Apenas goal recebe dados de progresso nas props públicas; totais open/fixed são descartados antes da renderização.
 
-Para goal, card e modal mostram meta, barra acessível (role=progressbar, aria-valuemin=0, aria-valuemax=100, aria-valuenow), percentual e total confirmado; restante aparece somente com arrecadação parcial. goal_reached força 100%, mostra “Meta alcançada ❤️” e remove o CTA normal do card. Percentuais finitos são limitados a 0–100. Falha/ausência/inconsistência da RPC mostra “Progresso temporariamente indisponível” e desabilita o CTA goal, sem simular zeros. Para open aparece “Contribua com o valor que desejar”; fixed/Insanos não mostram barra. Não há criação de contribuições ou gateway.
+Para goal, card e modal mostram meta, barra acessível (role=progressbar, aria-valuemin=0, aria-valuemax=100, aria-valuenow), percentual e total confirmado; restante aparece somente com arrecadação parcial. `goal_reached=true` ou percentual visual de 100% mostra “Meta alcançada ❤️” e remove o CTA normal do card. Para open aparece “Contribua com o valor que desejar”; fixed/Insanos não mostram barra. O formulário cria somente `pending`; ainda não existe gateway.
 
 A RPC também não retorna `external_reference`. A agregação usa apenas gift_id, amount e payment_status das contribuições dos presentes ativos; a divisão é condicionada a goal e protegida com NULLIF. Apesar de não expor registros individuais, totais exatos públicos não garantem anonimato estatístico: uma contribuição isolada ou diferenças entre consultas podem revelar um valor individual, sem identificar seu autor. Eliminar essa inferência exige outra decisão de produto (suprimir/agrupar/atrasar agregados), incompatível com garantir totais exatos sempre atualizados. Revisar esse limite antes de disponibilizar progresso público.
+
+## Criação de pending
+
+`POST /api/gift-contributions` é o único caminho do navegador para iniciar uma contribuição. O endpoint exige mesma origem, body JSON limitado e rate limiting. A chave `service_role` fica exclusivamente no servidor. Cada montagem do formulário gera o UUID v4 somente no primeiro envio e o preserva em retries. O servidor normaliza o payload relevante, persiste apenas seu SHA-256 canônico e garante unicidade da chave no PostgreSQL.
+
+Para `goal`, o valor textual é convertido em centavos inteiros e comparado ao `remaining_amount` mais recente. Para `open`, aceita-se qualquer valor positivo dentro de `numeric(10,2)`. Para `fixed`, o valor recebido do navegador não participa da decisão: `target_amount` do banco determina a contribuição. Insanos exigem nome de colete. Nome e textos são aparados; WhatsApp brasileiro é normalizado para `+55...`.
+
+O retry chama primeiro `expire_gift_contribution_pending`, depois consulta a chave. Fingerprint igual devolve somente `{ok,payment_status}` da tentativa existente; fingerprint diferente retorna conflito. Uma corrida entre dois primeiros INSERTs também é resolvida pela unicidade e nova leitura. Chave e fingerprint nunca retornam ao navegador.
+
+`expires_at` nasce exatamente 15 minutos depois de `created_at`. A função protegida atualiza somente linhas vencidas que ainda estejam `pending`, sem apagar histórico; a correção `202609170003` permite localizar uma linha específica pelo `id` privado da contribuição ou por sua chave de idempotência, além de preservar a futura varredura administrativa sem argumento. O retry vencido recebe `expired`. Fechar e reabrir o formulário constitui nova tentativa e gera nova chave.
 
 ## Concorrência e decisões antes de produção
 
 O trigger `validate_gift_contribution` serializa inserções e atualizações pela linha de `gifts`. Atualiza somente `updated_at` para adquirir bloqueio de escrita; isso também força conflitos de serialização em transações com snapshot antigo em REPEATABLE READ. Recalcula o total confirmado após o bloqueio, excluindo a própria contribuição em edição. O servidor futuro deve repetir transações em erros de serialização/deadlock.
 
-Pendentes não reservam saldo. Duas pendentes podem caber individualmente; na confirmação, apenas as que ainda couberem serão aceitas. Confirmação que ultrapassa a meta é recusada, não truncada. Antes de receber dinheiro real, definir reserva/expiração, idempotência de webhooks, conciliação, estorno e tratamento de valores recebidos após esgotamento. Não habilitar pagamentos sobre esta estrutura sem essa fase.
+Pendentes não reservam saldo. Duas pendentes podem caber individualmente; na confirmação, apenas as que ainda couberem serão aceitas. `expired` significa apenas que a tentativa expirou para a experiência do site. Uma confirmação bancária tardia do C6 deverá passar por conciliação segura antes de qualquer transição posterior. O esquema não bloqueia essa transição, mas ela não foi implementada. Antes de receber dinheiro real, definir idempotência do webhook, conciliação, estorno e tratamento de valores recebidos após esgotamento.
 
 Não modificar modalidade, meta ou allow_multiple de um presente com contribuições existentes sem um fluxo administrativo transacional que valide o histórico; esse fluxo ainda não existe. Correções/cancelamentos privados podem reabrir saldo. Não há trilha de auditoria financeira implementada.
 
