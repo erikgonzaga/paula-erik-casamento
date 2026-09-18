@@ -3,6 +3,14 @@ export type RegularGiftCategory = Exclude<GiftCategory, 'insanos'>;
 export type GiftType = 'regular' | 'insanos';
 export type FundingMode = 'goal' | 'open' | 'fixed';
 
+export type GiftProgress = {
+  target_amount: number;
+  total_raised: number;
+  percentage: number;
+  remaining_amount: number;
+  goal_reached: boolean;
+};
+
 export type Gift = {
   id: string;
   name: string;
@@ -16,6 +24,7 @@ export type Gift = {
   display_order: number;
   gift_type: GiftType;
   allow_multiple: boolean;
+  progress?: GiftProgress | null;
 };
 
 export type RegularGift = Gift & { category: RegularGiftCategory; gift_type: 'regular' };

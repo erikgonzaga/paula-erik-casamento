@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { Gift } from '@/lib/gifts/types';
+import { combineGiftProgress } from '@/lib/gifts/progress';
 import { publicDatabase, PublicDatabaseError } from '@/lib/supabase/public-server';
 
 const selection = [
@@ -19,13 +20,14 @@ const selection = [
 ].join(',');
 
 export async function getActiveGifts(): Promise<Gift[]> {
-  const rows = await publicDatabase<Gift[]>(
-    `gifts?select=${selection}&active=eq.true&order=display_order.asc,id.asc`,
-  );
+  const [rows, progress] = await Promise.all([
+    publicDatabase<Gift[]>(`gifts?select=${selection}&active=eq.true&order=display_order.asc,id.asc`),
+    publicDatabase<unknown>('rpc/get_gift_progress').catch(() => null),
+  ]);
 
   if (!Array.isArray(rows)) throw new PublicDatabaseError();
 
-  return rows.map((gift) => {
+  const gifts = rows.map((gift) => {
     const target_amount = gift.target_amount === null ? null : Number(gift.target_amount);
     if (!['goal', 'open', 'fixed'].includes(gift.funding_mode)) throw new PublicDatabaseError();
     if (gift.funding_mode === 'open') {
@@ -35,4 +37,5 @@ export async function getActiveGifts(): Promise<Gift[]> {
     }
     return { ...gift, target_amount };
   });
+  return combineGiftProgress(gifts, progress);
 }

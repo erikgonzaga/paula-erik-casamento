@@ -1,5 +1,7 @@
 # Catálogo definitivo — revisão v1
 
+Estado atual: o casal confirmou o cadastro no Supabase. Na etapa de progresso real, a leitura pública confirmou 38 presentes ativos e 34 metas com arrecadação zero. O catálogo SQL não foi alterado nem reexecutado nessa etapa. O texto editorial de Gramado agora aparece no filtro Viagem.
+
 Arquivo: `supabase/catalogs/20260917_gifts_definitive_v1.sql`. Seed definitivo manual, separado de migrations e dos seeds de desenvolvimento. Não executado nesta etapa, nem em banco local. As migrations 202609150001 e 202609170001 foram informadas pelo casal como aplicadas com sucesso; não foram alteradas.
 
 São 38 presentes: 7 Festa, 22 Casa, 6 Viagem e 3 Insanos. Todos ativos, allow_multiple=true e featured=false. Há 34 metas, 1 contribuição livre e 3 valores fixos sem teto coletivo. A ordem segue exatamente a lista do casal, de 1 a 38.

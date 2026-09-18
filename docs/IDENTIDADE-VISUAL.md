@@ -102,6 +102,8 @@ Não use `↗`, `→`, `➜`, `⤴` ou emoji como ícone novo.
 
 A página mantém fundo marfim, hero centralizado, filtros em pills, cards leves e modal editorial. O título “Lista de Presentes” está em uma linha quando houver espaço e recebeu aumento de tamanho aprovado; nomes dos presentes ficam limitados a uma linha com reticências.
 
+Metas regulares usam barra discreta de 6 px, preenchimento `--olive` e trilho `--cream`, com valores e percentual textuais. Textos usam `--ink`, `--olive` e `--muted`, sem cores novas. Valores inteiros são exibidos em pt-BR sem centavos desnecessários; centavos reais são preservados. O texto de Gramado aparece centralizado no filtro Viagem, com título serifado. Sem redesenho das imagens/cards ou mudanças na seção Insanos.
+
 ### Presentes Insanos
 
 Background ativo: `public/images/presentes/banner-presentes-insanos.png`.
@@ -130,5 +132,5 @@ Composição:
 
 A ordem textual nunca deve ser invertida por `order`: introdução sempre antes de “Gratidão, irmãos!”.
 
-Os títulos completos das medalhas permitem wrapping em todos os breakpoints. A partir de 768 px, a apresentação quebra antes de “— MEDALHA …”; no mobile, mantém o fluxo inline e a quebra natural. Fonte, centralização e nomes do banco são preservados. Validado em navegador local em 375, 430, 768, 1024, 1280 e 1440 px, com duas linhas e sem texto fora dos cards. O teste opcional `tests/presentes-titles.mjs` usa catálogo HTTP em memória e Playwright, sem acessar o Supabase.
+Os títulos completos das medalhas são derivados de `gift.name` sem alterar o banco: “PRESENTE INSANO” e “MEDALHA …” ocupam duas linhas intencionais, centralizadas e sem o travessão visual, em todos os breakpoints. Fonte e nomes originais são preservados. Validado em navegador local em 375, 430, 768, 1024, 1280 e 1440 px, sem texto fora dos cards. O teste opcional `tests/presentes-titles.mjs` usa catálogo HTTP em memória e Playwright, sem acessar o Supabase.
 

@@ -1,6 +1,6 @@
 # Metas e contribuições — etapa de arquitetura
 
-Migration: `supabase/migrations/202609170001_gift_funding.sql`. O casal informou sua aplicação bem-sucedida no Supabase, assim como a da migration `202609150001_gifts_party_category.sql`. Ambas agora são históricas e imutáveis. O catálogo definitivo está preparado, ainda sem execução, em `supabase/catalogs/20260917_gifts_definitive_v1.sql`; ver `CATALOGO-DEFINITIVO.md`.
+Migration: `supabase/migrations/202609170001_gift_funding.sql`. O casal informou sua aplicação bem-sucedida no Supabase, assim como a da migration `202609150001_gifts_party_category.sql`. Ambas agora são históricas e imutáveis. O catálogo definitivo já está no Supabase conforme informado pelo casal; a referência versionada permanece em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, sem reexecução nesta etapa; ver `CATALOGO-DEFINITIVO.md`.
 
 ## Catálogo final
 
@@ -50,7 +50,9 @@ RLS de `gifts` permanece intacta: público lê somente ativos. `gift_contributio
 - `remaining_amount`: para goal, máximo entre zero e meta − total;
 - `goal_reached`: verdadeiro somente em goal com total ≥ meta.
 
-Para open/fixed, percentual e restante são nulos e meta alcançada é falso. Não retorna IDs individuais, quantidades, nomes, telefones, coletes ou mensagens. A página ainda não consulta essa RPC nem mostra barra de progresso.
+Para open/fixed, percentual e restante são nulos e meta alcançada é falso. Não retorna IDs individuais, quantidades, nomes, telefones, coletes ou mensagens. A página agora consulta essa RPC no servidor e combina por gift_id com o catálogo. Apenas goal recebe dados de progresso nas props públicas; totais open/fixed são descartados antes da renderização.
+
+Para goal, card e modal mostram meta, barra acessível (role=progressbar, aria-valuemin=0, aria-valuemax=100, aria-valuenow), percentual e total confirmado; restante aparece somente com arrecadação parcial. goal_reached força 100%, mostra “Meta alcançada ❤️” e remove o CTA normal do card. Percentuais finitos são limitados a 0–100. Falha/ausência/inconsistência da RPC mostra “Progresso temporariamente indisponível” e desabilita o CTA goal, sem simular zeros. Para open aparece “Contribua com o valor que desejar”; fixed/Insanos não mostram barra. Não há criação de contribuições ou gateway.
 
 A RPC também não retorna `external_reference`. A agregação usa apenas gift_id, amount e payment_status das contribuições dos presentes ativos; a divisão é condicionada a goal e protegida com NULLIF. Apesar de não expor registros individuais, totais exatos públicos não garantem anonimato estatístico: uma contribuição isolada ou diferenças entre consultas podem revelar um valor individual, sem identificar seu autor. Eliminar essa inferência exige outra decisão de produto (suprimir/agrupar/atrasar agregados), incompatível com garantir totais exatos sempre atualizados. Revisar esse limite antes de disponibilizar progresso público.
 
@@ -65,6 +67,8 @@ Não modificar modalidade, meta ou allow_multiple de um presente com contribuiç
 A renomeação é incompatível com o código antigo que consulta `price`: coordenar migration e publicação, idealmente em janela de manutenção (o catálogo de produção foi informado como vazio). Não publicar o novo código contra o esquema antigo. Confirmar projeto, histórico de migrations e backup antes de aplicar manualmente. Não executar seeds no remoto.
 
 ## Validação
+
+Na etapa de progresso real, duas leituras públicas GET (gifts ativos e get_gift_progress) confirmaram 38 presentes ativos e 34 metas, todas com total confirmado zero, percentual zero e goal_reached=false. Nenhum progresso de meta ausente. Não foram consultados dados individuais nem realizadas gravações. Fixtures de interface locais exercitam estados diferentes sem modificar o Supabase.
 
 `tests/gifts.test.mjs` executa as migrations reais em PGlite, testa categorias, modalidades, metas, valores, RLS, agregados, confirmação de pendências concorrentes em sequência, presente único e múltiplas contribuições Insanos. O teste de disputa sequencial não substitui teste com duas conexões simultâneas em PostgreSQL/Supabase; essa validação deve preceder pagamentos reais.
 

@@ -79,13 +79,15 @@ Arquivos:
 
 `/presentes` é renderizada dinamicamente e chama `getActiveGifts` no servidor. A consulta REST usa a chave `anon`, solicita somente registros com `active=true` e ordena por `display_order` e `id`. Nenhuma chave `service_role` ou consulta ao Supabase é enviada ao componente cliente.
 
-O serviço agora consulta `target_amount` e `funding_mode`, valida o valor por modalidade e preserva a apresentação monetária existente. `open` sem meta exibe “Contribuição livre” no mesmo elemento. A RPC `get_gift_progress()` prepara a leitura agregada futura, mas ainda não é chamada pela página. Veja [Metas e contribuições](PRESENTES-CONTRIBUICOES.md) para estrutura, privacidade e concorrência.
+O serviço consulta o catálogo e `rpc/get_gift_progress` em paralelo no servidor, usando a chave pública e `cache: no-store`. `combineGiftProgress` associa `gifts.id` a `gift_id`, preserva a ordem, normaliza números e envia somente os agregados de presentes `goal` aos componentes. Dados ausentes/inválidos ou falha da RPC mostram indisponibilidade, nunca um 0% inventado. Não existe consulta frontend a contribuições individuais. Veja [Metas e contribuições](PRESENTES-CONTRIBUICOES.md).
+
+Cards e modal regulares mostram meta e progresso para `goal`; `open` mostra convite para valor livre, sem totais; `fixed` mostra somente seu valor. Metas alcançadas continuam visíveis sem CTA normal. O filtro Viagem revela o texto editorial de Gramado. Insanos preservam seu visual e valores vindos do catálogo. Os dados são atualizados a cada requisição da página; não há assinatura realtime nem pagamento implementado.
 
 `GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. Os botões de presentes continuam sem integração financeira. O símbolo da moto permanece como SVG local no componente da página.
 
 Os enquadramentos aprovados das fotografias continuam em um mapa de apresentação no componente. O seed opcional `supabase/seeds/gifts-development.sql` reproduz o catálogo provisório anterior para testes locais, mas não é executado pelo fluxo normal de seed nem deve ser aplicado automaticamente em produção.
 
-O catálogo definitivo aprovado quanto ao conteúdo está em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, fora de migrations, do seed automático e da aplicação. Contém 38 registros, ainda não executados nesta etapa, com `ON CONFLICT (slug) DO UPDATE`. Ver [Catálogo definitivo](CATALOGO-DEFINITIVO.md). Regulares aguardam imagens (`image_url=null`); medalhas mantêm assets e slugs de apresentação existentes.
+O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, fora de migrations, do seed automático e da aplicação. O casal informou que os 38 registros já estão no Supabase. O arquivo não foi executado nem alterado nesta etapa. Ver [Catálogo definitivo](CATALOGO-DEFINITIVO.md). Regulares aguardam imagens (`image_url=null`); medalhas mantêm assets e slugs de apresentação existentes.
 
 ## RSVP e convite fechado
 
@@ -162,6 +164,8 @@ Os valores não pertencem ao Git ou à documentação. `.env.local` está ignora
 ## Testes
 
 `npm test` executa `tests/rsvp.test.mjs` e `tests/gifts.test.mjs` com migrations reais em PGlite. Além do RSVP, cobre constraints do catálogo, leitura pública somente de presentes ativos e bloqueio de `INSERT`, `UPDATE` e `DELETE` para `anon` e `authenticated`.
+
+Também executa `tests/gift-progress.test.mjs`: associação por ID, 0/parcial/100%, limites visuais, indisponibilidade, formatação pt-BR e exclusão dos totais open/fixed das props. O teste opcional de navegador `tests/presentes-titles.mjs` cobre esses estados na página, modal, Gramado e overflow em 375, 430, 768, 1024, 1280 e 1440 px usando HTTP local em memória, sem Supabase. Executar com `node tests/presentes-titles.mjs <caminho-do-modulo-playwright> [pasta-de-capturas]`; requer Microsoft Edge instalado.
 
 O teste HTTP requer três processos:
 

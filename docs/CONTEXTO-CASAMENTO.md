@@ -61,7 +61,7 @@ O catálogo agora possui a migration versionada `202609140001_gifts_catalog.sql`
 
 A migration `202609170001_gift_funding.sql` prepara metas (`goal`), valor livre (`open`) e contribuições fixas (`fixed`), com registros privados em `gift_contributions` e progresso público agregado. O casal informou a aplicação bem-sucedida desta migration e de `202609150001_gifts_party_category.sql` no Supabase. Não há pagamento real, integração PIX, endpoint de contribuição, estoque ou controle de compra na interface. Os botões comuns apenas mostram uma mensagem de “em breve”; os botões Insanos ainda não executam contribuição. Detalhes em `docs/PRESENTES-CONTRIBUICOES.md`.
 
-O catálogo definitivo de 38 presentes foi preparado para revisão, sem execução, no seed manual `supabase/catalogs/20260917_gifts_definitive_v1.sql`. A viagem é para Gramado. Valores, descrições e decisões de imagens estão em `docs/CATALOGO-DEFINITIVO.md`.
+O casal informou que o catálogo definitivo de 38 presentes já está no Supabase. O seed manual `supabase/catalogs/20260917_gifts_definitive_v1.sql` permanece como referência, sem execução nesta etapa. A viagem é para Gramado; seu texto editorial aparece ao selecionar Viagem. Cards regulares exibem progresso real das metas pela RPC pública agregada, sem contribuições individuais. Os estados parcial/completo são testados apenas em fixtures locais; nenhum progresso fictício é inserido no site ou no banco. Valores, descrições e decisões de imagens estão em `docs/CATALOGO-DEFINITIVO.md`.
 
 ### Fases futuras
 
