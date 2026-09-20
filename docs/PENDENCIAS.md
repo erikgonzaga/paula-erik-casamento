@@ -21,7 +21,7 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 - As migrations `202609140001_gifts_catalog.sql`, `202609150001_gifts_party_category.sql` e `202609170001_gift_funding.sql` foram informadas pelo casal como aplicadas em produção. São históricas e não devem ser editadas.
 - Catálogo de 38 registros já cadastrado no Supabase, conforme informado pelo casal; não executar novamente nem usar seed fictício nesta etapa. Progresso real implementado via RPC agregada, com meta alcançada e texto de Gramado no filtro Viagem.
-- Receber imagens dos 35 presentes regulares. Títulos das medalhas e cards com progresso validados em 375, 430, 768, 1024, 1280 e 1440 px com fixtures locais. Ver `CATALOGO-DEFINITIVO.md`.
+- Imagens definitivas dos 35 presentes regulares recebidas e associadas por slug. Manter a validação visual dos cards e modais em 375, 390, 430, 768, 1024, 1280 e 1440 px. Ver `CATALOGO-DEFINITIVO.md`.
 - Definir PIX real, recebedor, confirmação e eventual link externo parcelado. Nenhum dado financeiro deve ser inventado ou commitado.
 - Formulários regulares e Insanos já criam contribuições privadas `pending`; revisar textos finais e testar o endpoint em um projeto Supabase de desenvolvimento antes de integrar pagamento.
 - A migration `202609170002_gift_contribution_idempotency_expiry.sql` foi aplicada em produção conforme informado pelo casal. A correção `202609170003_fix_gift_contribution_expiry.sql` está somente no repositório: revisar backup, aplicar manualmente e validar com o registro vencido preservado antes de qualquer deploy.

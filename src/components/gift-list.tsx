@@ -73,7 +73,7 @@ function contributionBlocked(gift: RegularGift) {
 
 function GiftCard({gift,onSelect}:{gift:RegularGift;onSelect:(gift:RegularGift)=>void}){
   return <article className={styles.card}>
-    <div className={styles.imageWrap}>{gift.image_url&&<Image src={gift.image_url} alt="" fill sizes="(max-width: 640px) 88vw, (max-width: 1000px) 42vw, 27vw" style={{objectFit:'cover',objectPosition:imagePosition(gift)}} />}</div>
+    <div className={styles.imageWrap}>{gift.image_url&&<Image src={gift.image_url} alt={gift.name} fill sizes="(max-width: 640px) 88vw, (max-width: 1000px) 42vw, 27vw" style={{objectFit:'cover',objectPosition:imagePosition(gift)}} />}</div>
     <div className={styles.cardBody}>
       <p className={styles.category}>{categoryLabels[gift.category]}</p><h2>{gift.name}</h2>
       <GiftFunding gift={gift} />
@@ -101,7 +101,7 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
     <section className={styles.grid} aria-label="Presentes disponíveis">{visible.map(gift=><GiftCard key={gift.id} gift={gift} onSelect={open} />)}</section>
     {selected&&<div className={styles.backdrop} role="presentation" onMouseDown={()=>setSelected(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" onMouseDown={event=>event.stopPropagation()}>
       <button className={styles.close} type="button" aria-label="Fechar detalhes do presente" onClick={()=>setSelected(null)}>×</button>
-      <div className={styles.modalImage}>{selected.image_url&&<Image src={selected.image_url} alt="" fill sizes="(max-width: 640px) 88vw, 460px" style={{objectFit:'cover',objectPosition:imagePosition(selected)}} />}</div>
+      <div className={styles.modalImage}>{selected.image_url&&<Image src={selected.image_url} alt={selected.name} fill sizes="(max-width: 640px) 88vw, 460px" style={{objectFit:'cover',objectPosition:imagePosition(selected)}} />}</div>
       <div className={styles.modalBody}><p className={styles.category}>{categoryLabels[selected.category]}</p><h2 id="gift-detail-title">{selected.name}</h2><GiftFunding gift={selected} /><p className={styles.description}>{selected.description??''}</p><GiftContributionForm gift={selected} /></div>
     </section></div>}
   </>;

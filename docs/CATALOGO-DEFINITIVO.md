@@ -140,7 +140,7 @@ Texto preservado para futura aplicação editorial; não foi inserido em um pres
 
 ## Imagens e identidade
 
-Os 35 regulares usam image_url=null, aguardando imagens definitivas. O componente já renderiza Image condicionalmente; o wrapper dos cards mantém aspect-ratio e fundo var(--sand), e o modal mantém min-height/fundo. Assim a área visual não colapsa nem gera requisição de imagem inválida. A avaliação foi pelo código/CSS, sem renderização do catálogo nesta etapa.
+Os 35 presentes regulares possuem imagens definitivas em `public/images/presentes/catalogo`, nomeadas pelo slug estável. O catálogo aponta `image_url` para esses assets. O componente continua renderizando `Image` condicionalmente; o wrapper dos cards mantém `aspect-ratio` e fundo `var(--sand)`, e o modal mantém `min-height`/fundo, preservando o fallback caso um registro futuro não possua imagem.
 
 As medalhas preservam os caminhos locais moeda-bronze-final.png, moeda-prata-final.png e moeda-ouro-final.png, e os slugs moeda-bronze/moeda-prata/moeda-ouro. Esses slugs também selecionam as cores dos botões: não devem ser trocados casualmente. Os nomes completos pedidos foram mantidos; como são mais longos que os anteriores, revisar a quebra dos títulos Insanos em uma futura prévia antes de publicar. Nenhum CSS, componente ou asset foi alterado nesta etapa.
 
@@ -150,7 +150,7 @@ Referências visuais futuras da Casa: eletrodomésticos preferencialmente pretos
 
 ON CONFLICT (slug) DO UPDATE usa a constraint única existente e torna o catálogo a fonte de verdade para os 38 slugs listados. Atualiza display_order, category, name, funding_mode, target_amount, description, image_url, gift_type, active, allow_multiple e featured. Preserva id, created_at e relacionamentos pelo UUID; updated_at é atualizado pelo trigger existente. Os slugs permanecem estáveis. O conteúdo dos 38 registros foi aprovado pelo casal e não foi alterado neste refinamento.
 
-Mesmo que os slugs das moedas já existam, Bronze/Prata/Ouro serão sincronizados para 75/150/225. image_url também é sincronizado, inclusive null para os regulares: imagens futuras devem ser incorporadas ao catálogo antes de reexecutá-lo. Registros extras não são removidos ou desativados. O casal informou gift_contributions vazia neste momento; não há lógica para alterar ou excluir contribuições. Se houver contribuições no futuro, revisar alterações de metas/modalidades antes de reexecutar. Não executar o seed fictício para completar o catálogo.
+Mesmo que os slugs das moedas já existam, Bronze/Prata/Ouro serão sincronizados para 75/150/225. `image_url` também é sincronizado para as imagens definitivas dos 38 presentes. Registros extras não são removidos ou desativados. O casal informou `gift_contributions` vazia no cadastro inicial; não há lógica para alterar ou excluir contribuições. Se houver contribuições, revisar alterações de metas/modalidades antes de reexecutar. Não executar o seed fictício para completar o catálogo.
 
 O SQL inclui BEGIN/COMMIT para atomicidade, insere/atualiza somente public.gifts e não muda schema, RLS ou contribuições. Não está listado no supabase/config.toml, não é importado pela aplicação e não será aplicado por db push.
 
