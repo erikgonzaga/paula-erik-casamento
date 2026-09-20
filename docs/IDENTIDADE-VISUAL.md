@@ -106,6 +106,8 @@ Metas regulares usam barra discreta de 6 px, preenchimento `--olive` e trilho `-
 
 O formulário de contribuição usa o modal editorial existente, campos marfim com borda `--line`, resumos em `--cream` e ação `--olive`. Sugestões de valor permanecem discretas e arredondadas. O diálogo dos Insanos é renderizado fora dos cards para não herdar nem alterar sua composição visual aprovada.
 
+Nos cards regulares, a mídia permanece em `16:8` até 640 px, passa por `16:8.5` entre 641 e 820 px e usa `16:9` a partir de 821 px. O modal regular mantém a composição mobile aprovada até 900 px. Acima disso, usa hero horizontal de 300 px com `object-fit: contain` sobre fundo creme, seguido por conteúdo editorial em duas colunas. O diálogo limita sua altura à viewport, rola internamente e bloqueia a rolagem da página enquanto está aberto. Essas regras não se aplicam aos Presentes Insanos.
+
 ### Presentes Insanos
 
 Background ativo: `public/images/presentes/banner-presentes-insanos.png`.

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatGiftAmount, formatGoalAmount, formatGiftPercentage } from '@/lib/gifts/format';
 import { clampPercentage } from '@/lib/gifts/progress';
 import type { RegularGift, RegularGiftCategory } from '@/lib/gifts/types';
@@ -40,6 +40,10 @@ function imagePosition(gift: RegularGift) {
   return imagePositions[gift.slug] ?? '50% 50%';
 }
 
+function usesTransparentMedia(gift: RegularGift) {
+  return gift.slug === 'ajudinha-ultimos-boletos';
+}
+
 function goalReached(gift: RegularGift) {
   return gift.funding_mode === 'goal' && !!gift.progress &&
     (gift.progress.goal_reached || clampPercentage(gift.progress.percentage) >= 100);
@@ -72,8 +76,9 @@ function contributionBlocked(gift: RegularGift) {
 }
 
 function GiftCard({gift,onSelect}:{gift:RegularGift;onSelect:(gift:RegularGift)=>void}){
+  const transparentMedia=usesTransparentMedia(gift);
   return <article className={styles.card}>
-    <div className={styles.imageWrap}>{gift.image_url&&<Image src={gift.image_url} alt={gift.name} fill sizes="(max-width: 640px) 88vw, (max-width: 1000px) 42vw, 27vw" style={{objectFit:'cover',objectPosition:imagePosition(gift)}} />}</div>
+    <div className={`${styles.imageWrap} ${transparentMedia?styles.transparentMediaBackground:''}`}>{gift.image_url&&<Image className={transparentMedia?styles.transparentCardImage:undefined} src={gift.image_url} alt={gift.name} fill sizes="(max-width: 640px) 88vw, (max-width: 1000px) 42vw, 27vw" style={{objectFit:transparentMedia?'contain':'cover',objectPosition:imagePosition(gift)}} />}</div>
     <div className={styles.cardBody}>
       <p className={styles.category}>{categoryLabels[gift.category]}</p><h2>{gift.name}</h2>
       <GiftFunding gift={gift} />
@@ -88,9 +93,39 @@ function GiftCard({gift,onSelect}:{gift:RegularGift;onSelect:(gift:RegularGift)=
 export function GiftList({gifts}:{gifts:RegularGift[]}){
   const [category,setCategory]=useState<Category>('all');
   const [selected,setSelected]=useState<RegularGift|null>(null);
+  const dialogRef=useRef<HTMLElement|null>(null);
+  const closeButtonRef=useRef<HTMLButtonElement|null>(null);
+  const triggerRef=useRef<HTMLElement|null>(null);
   const visible=category==='all'?gifts:gifts.filter(gift=>gift.category===category);
-  useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(null)};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[]);
-  function open(gift:RegularGift){if(contributionBlocked(gift))return;setSelected(gift)}
+  useEffect(()=>{
+    if(!selected)return;
+    const previousOverflow=document.body.style.overflow;
+    const returnFocus=triggerRef.current;
+    document.body.style.overflow='hidden';
+    closeButtonRef.current?.focus();
+    const handleKeyDown=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){
+        event.preventDefault();
+        setSelected(null);
+        return;
+      }
+      if(event.key!=='Tab'||!dialogRef.current)return;
+      const focusable=[...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')];
+      if(!focusable.length)return;
+      const first=focusable[0];
+      const last=focusable[focusable.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+    };
+    window.addEventListener('keydown',handleKeyDown);
+    return()=>{
+      document.body.style.overflow=previousOverflow;
+      window.removeEventListener('keydown',handleKeyDown);
+      returnFocus?.focus();
+    };
+  },[selected]);
+  function open(gift:RegularGift){if(contributionBlocked(gift))return;triggerRef.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setSelected(gift)}
+  function close(){setSelected(null)}
   return <>
     <div className={styles.filters} role="group" aria-label="Filtrar presentes por categoria">{categories.map(item=><button type="button" key={item.value} className={category===item.value?styles.filterActive:styles.filter} aria-pressed={category===item.value} onClick={()=>setCategory(item.value)}>{item.label}</button>)}</div>
     {category === 'travel' && <section className={styles.travelIntro} aria-labelledby="gramado-title">
@@ -99,10 +134,16 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
     </section>}
     <p className={styles.resultCount} aria-live="polite">{visible.length} {visible.length===1?'presente encontrado':'presentes encontrados'}</p>
     <section className={styles.grid} aria-label="Presentes disponíveis">{visible.map(gift=><GiftCard key={gift.id} gift={gift} onSelect={open} />)}</section>
-    {selected&&<div className={styles.backdrop} role="presentation" onMouseDown={()=>setSelected(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" onMouseDown={event=>event.stopPropagation()}>
-      <button className={styles.close} type="button" aria-label="Fechar detalhes do presente" onClick={()=>setSelected(null)}>×</button>
-      <div className={styles.modalImage}>{selected.image_url&&<Image src={selected.image_url} alt={selected.name} fill sizes="(max-width: 640px) 88vw, 460px" style={{objectFit:'cover',objectPosition:imagePosition(selected)}} />}</div>
-      <div className={styles.modalBody}><p className={styles.category}>{categoryLabels[selected.category]}</p><h2 id="gift-detail-title">{selected.name}</h2><GiftFunding gift={selected} /><p className={styles.description}>{selected.description??''}</p><GiftContributionForm gift={selected} /></div>
+    {selected&&<div className={styles.backdrop} role="presentation" onMouseDown={close}><section ref={dialogRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" aria-describedby="gift-detail-description" onMouseDown={event=>event.stopPropagation()}>
+      <button ref={closeButtonRef} className={styles.close} type="button" aria-label="Fechar detalhes do presente" onClick={close}>×</button>
+      <div className={`${styles.modalImage} ${usesTransparentMedia(selected)?styles.transparentMediaBackground:''}`}><div className={styles.modalImageArt}>{selected.image_url&&<Image className={`${styles.modalImageAsset} ${usesTransparentMedia(selected)?styles.transparentModalImage:''}`} src={selected.image_url} alt={selected.name} fill sizes="(max-width: 640px) 88vw, (max-width: 900px) 500px, 534px" style={{objectPosition:imagePosition(selected)}} />}</div></div>
+      <div className={styles.modalBody}>
+        <p className={styles.category}>{categoryLabels[selected.category]}</p>
+        <h2 id="gift-detail-title">{selected.name}</h2>
+        <div className={styles.modalFunding}><GiftFunding gift={selected} /></div>
+        <p id="gift-detail-description" className={styles.description}>{selected.description??''}</p>
+        <div className={styles.modalForm}><GiftContributionForm gift={selected} /></div>
+      </div>
     </section></div>}
   </>;
 }

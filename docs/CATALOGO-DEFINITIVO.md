@@ -1,8 +1,8 @@
 # Catálogo definitivo — revisão v1
 
-Estado atual: o casal confirmou o cadastro no Supabase. Na etapa de progresso real, a leitura pública confirmou 38 presentes ativos e 34 metas com arrecadação zero. O catálogo SQL não foi alterado nem reexecutado nessa etapa. O texto editorial de Gramado agora aparece no filtro Viagem.
+Estado atual: o casal confirmou o cadastro no Supabase. Na etapa de progresso real, a leitura pública confirmou 38 presentes ativos e 34 metas com arrecadação zero. A ordem de Festa foi revisada para começar por “Uma ajudinha com os últimos boletos 😅”. O catálogo não foi reexecutado nesta etapa. O texto editorial de Gramado agora aparece no filtro Viagem.
 
-Arquivo: `supabase/catalogs/20260917_gifts_definitive_v1.sql`. Seed definitivo manual, separado de migrations e dos seeds de desenvolvimento. Não executado nesta etapa, nem em banco local. As migrations 202609150001 e 202609170001 foram informadas pelo casal como aplicadas com sucesso; não foram alteradas.
+Arquivo: `supabase/catalogs/20260917_gifts_definitive_v1.sql`. Seed definitivo manual, separado de migrations e dos seeds de desenvolvimento. A mudança pontual para dados já existentes está em `supabase/catalogs/20260920_reorder_party_gifts.sql`; nenhum dos dois arquivos foi executado nesta etapa, nem em banco local. As migrations 202609150001 e 202609170001 foram informadas pelo casal como aplicadas com sucesso; não foram alteradas.
 
 São 38 presentes: 7 Festa, 22 Casa, 6 Viagem e 3 Insanos. Todos ativos, allow_multiple=true e featured=false. Há 34 metas, 1 contribuição livre e 3 valores fixos sem teto coletivo. A ordem segue exatamente a lista do casal, de 1 a 38.
 
@@ -10,13 +10,13 @@ São 38 presentes: 7 Festa, 22 Casa, 6 Viagem e 3 Insanos. Todos ativos, allow_m
 
 | display_order | category | name | funding_mode | target_amount (R$) |
 | --- | --- | --- | --- | --- |
-| 1 | party | Docinhos finos para adoçar nosso grande dia | goal | 600.00 |
-| 2 | party | O bolo do nosso casamento | goal | 800.00 |
-| 3 | party | Máquina de fotos para guardar nossas memórias | goal | 1250.00 |
-| 4 | party | Story Maker para registrar cada momento | goal | 1500.00 |
-| 5 | party | Assessoria para tudo sair como planejamos | goal | 600.00 |
-| 6 | party | Quadros interativos para nossas lembranças | goal | 200.00 |
-| 7 | party | Uma ajudinha com os últimos boletos 😅 | open | null |
+| 1 | party | Uma ajudinha com os últimos boletos 😅 | open | null |
+| 2 | party | Docinhos finos para adoçar nosso grande dia | goal | 600.00 |
+| 3 | party | O bolo do nosso casamento | goal | 800.00 |
+| 4 | party | Máquina de fotos para guardar nossas memórias | goal | 1250.00 |
+| 5 | party | Story Maker para registrar cada momento | goal | 1500.00 |
+| 6 | party | Assessoria para tudo sair como planejamos | goal | 600.00 |
+| 7 | party | Quadros interativos para nossas lembranças | goal | 200.00 |
 | 8 | house | Uma ajudinha para os móveis da casa nova | goal | 2000.00 |
 | 9 | house | Nossa geladeira | goal | 3500.00 |
 | 10 | house | Guarda-roupa dos recém-casados | goal | 2500.00 |
