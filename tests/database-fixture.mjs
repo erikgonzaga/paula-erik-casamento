@@ -5,6 +5,10 @@ import { createServer } from 'node:http';
 export async function createDatabase(){
  const db=new PGlite();
  await db.exec('create role anon; create role authenticated; create role service_role bypassrls;');
+ // Supabase supplies auth.users remotely; this minimal table is test-only.
+ await db.exec('create schema auth; create table auth.users(id uuid primary key);');
+ // Exercise explicit revocation even when the host supplies broad default grants.
+ await db.exec('alter default privileges in schema public grant all on tables to service_role;');
  const migrationsDir=new URL('../supabase/migrations/',import.meta.url);
  for(const migration of (await readdir(migrationsDir)).filter(file=>file.endsWith('.sql')).sort()) await db.exec(await readFile(new URL(migration,migrationsDir),'utf8'));
  await db.exec(await readFile(new URL('../supabase/seed.sql',import.meta.url),'utf8'));

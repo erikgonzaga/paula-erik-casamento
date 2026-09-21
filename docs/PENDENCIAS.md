@@ -33,9 +33,10 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 ## Administração e conteúdo futuro
 
-- Criar autenticação administrativa separada das sessões de convite.
-- Criar painel protegido para grupos, convidados, RSVP, detalhes do evento e presentes.
-- Definir perfis e permissões administrativas antes de conceder acesso a usuários autenticados. Hoje `anon` e `authenticated` permanecem sem acesso às tabelas privadas.
+- Fundação administrativa implementada localmente: Supabase Auth, autorização explícita, sessões revogáveis e dashboard somente leitura. Ver [Administração](ADMINISTRACAO.md).
+- Aplicar manualmente a nova migration `202609200001_admin_foundation.sql`, configurar Auth e criar/vincular o primeiro administrador conforme o guia. Nada foi executado remotamente.
+- Validar Auth real em Supabase de desenvolvimento antes de publicar. O teste local usa Auth sintético e SQL real em memória.
+- CRUD, recuperação de senha, MFA e demais áreas administrativas ficam para uma fase futura autorizada. `anon` e `authenticated` continuam sem acesso às tabelas privadas.
 - Decidir se fotos, textos e pessoas especiais serão gerenciáveis pelo painel ou continuarão versionados.
 
 ## Qualidade, segurança e publicação

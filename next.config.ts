@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
-    return ['/rsvp','/convite/:path*','/api/rsvp','/api/invitations/:path*'].map(source=>({
+    return ['/rsvp','/convite/:path*','/api/rsvp','/api/invitations/:path*','/admin/:path*'].map(source=>({
       source,headers:[
         {key:'Referrer-Policy',value:'no-referrer'},
         {key:'X-Robots-Tag',value:'noindex, nofollow'},

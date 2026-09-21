@@ -22,6 +22,8 @@ O ambiente recomendado é Node.js 22 ou superior.
 
 ## Rotas
 
+Nova fundação: `/admin/login`, `/admin` (visão geral protegida e somente leitura) e `POST /admin/session` (login/logout). A autorização é revalidada no serviço servidor em cada requisição. A migration `202609200001_admin_foundation.sql` adiciona autorização, sessões e RPC privada de agregação. As rotas públicas e seus serviços permanecem intactos. Ver [Administração](ADMINISTRACAO.md) para arquitetura, métricas, testes e operação manual.
+
 | Rota | Tipo | Responsabilidade |
 | --- | --- | --- |
 | `/` | pública, estática | Home, história, pessoas, dados públicos mínimos, links para RSVP e presentes. |

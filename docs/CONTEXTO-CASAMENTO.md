@@ -119,6 +119,8 @@ O endereço de produção informado durante o desenvolvimento é `https://paula-
 
 ## Transferência para outro computador
 
+Nova fase administrativa (20/09/2026): fundação local somente leitura, iniciada no checkpoint `5248eb6`. Login usa Supabase Auth; acesso exige administrador explicitamente ativo e sessão própria revogável. Nenhuma página pública, catálogo, contribuição ou RSVP foi alterado. A migration e o primeiro usuário dependem de execução manual pelo casal; não houve operação remota ou publicação. Detalhes em [Administração](ADMINISTRACAO.md).
+
 1. Clone `git@github.com:erikgonzaga/paula-erik-casamento.git` e confira a branch correta.
 2. Instale Node.js 22 ou superior e rode `npm ci`.
 3. Recrie `.env.local` usando o gerenciador seguro onde as credenciais reais estiverem guardadas. Use apenas os nomes documentados em `.env.example`; nunca transfira valores pelo Git ou por estes documentos.
