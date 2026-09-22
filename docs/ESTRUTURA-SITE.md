@@ -27,6 +27,7 @@ Nova fundação: `/admin/login`, `/admin` (visão geral protegida e somente leit
 | Rota | Tipo | Responsabilidade |
 | --- | --- | --- |
 | `/` | pública, estática | Home, história, pessoas, dados públicos mínimos, links para RSVP e presentes. |
+| `/nos` | pública, estática | Editorial com 15 fotografias, navegação existente e retorno à Home. Ver [Nós](NOS.md). |
 | `/presentes` | pública, dinâmica no servidor + interação client-side | Catálogo ativo do Supabase, filtros, modal e seção Insanos. |
 | `/api/gift-contributions` | servidor, escrita pública validada | Revalida o presente e cria exclusivamente contribuição `pending`; não confirma pagamento. |
 | `/rsvp` | privada por sessão/código | Entrada por código e formulário do convite. |

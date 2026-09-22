@@ -68,7 +68,7 @@ As fotos vêm do ensaio de Raquel Reis. A linguagem aprovada privilegia luz quen
 | `pe-22.jpg` | Fundo de “Eu escolhi você”. |
 | `pe-26.jpg` | Encerramento horizontal da Home. |
 
-`pe-6.jpg`, `pe-32.jpg` e `pe-33.jpg` continuam no acervo e podem abastecer o catálogo de presentes quando seus caminhos forem cadastrados em `gifts.image_url`.
+`/nos` utiliza a curadoria aprovada 06, 14, 01, 02, 03, 08, 09, 18, 21, 26, 27, 31, 32, 16 e 33. A abertura usa 06 e o encerramento usa 33, mantendo a Home com 12 e 26. Nesta página editorial, Next/Image preserva a proporção integral sem a máscara de DreamPhoto. Ver [Nós](NOS.md).
 
 ### Ornamentos de papelaria
 

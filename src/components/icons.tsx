@@ -22,3 +22,7 @@ export function ArrowUpRightIcon(props: IconProps) {
 export function ArrowDownIcon(props: IconProps) {
   return <svg {...iconProps} {...props}><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5" /></svg>;
 }
+
+export function ArrowRightIcon(props: IconProps) {
+  return <svg {...iconProps} {...props}><path d="M3 8h10M9 4l4 4-4 4" /></svg>;
+}

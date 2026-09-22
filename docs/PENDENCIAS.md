@@ -12,6 +12,8 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 ## Interface e conteúdo
 
+- Revisão visual pelo casal da nova página `/nos` e do CTA dentro de “Eu escolhi você” na Home. Curadoria e implementação descritas em [Nós](NOS.md); sem publicação nesta etapa.
+
 - Confirmar com o casal se a orientação “chegar com 15 minutos de antecedência” deve aparecer na Home ou apenas no convite privado. Existe estilo `.arrival-note`, mas o texto não está renderizado atualmente.
 - Revisar a seção “Pessoas especiais” e confirmar nomes finais antes da divulgação.
 - Fazer nova revisão editorial do texto integral e dos textos curtos, preservando o relato sensível sobre o acidente.

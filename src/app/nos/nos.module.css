@@ -1,0 +1,98 @@
+.page {
+  --pause: clamp(100px, 11vw, 160px);
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-top: clamp(36px, 5vw, 72px);
+}
+
+/* Natural image dimensions reserve space and preserve the entire photograph. */
+.photograph { margin: 0; min-width: 0; }
+.photograph img { display: block; width: 100%; height: auto; object-fit: contain; }
+
+.opening { display: flex; align-items: center; gap: 7%; margin-inline: 7%; }
+.openingCopy { width: 36%; padding-left: 3%; }
+.openingCopy h1 { margin: 0 0 24px; font-size: clamp(5rem, 9vw, 8rem); color: var(--ink); }
+.openingCopy p { font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--olive); }
+.heroPhoto { width: 54%; }
+.introduction { margin: 80px auto var(--pause); text-align: center; }
+.rule { display: block; width: 1px; height: 40px; margin: 0 auto 24px; background: var(--line); }
+.introduction p { font-family: var(--font-serif); font-size: clamp(1.2rem, 2vw, 1.6rem); font-style: italic; color: var(--olive); }
+
+/* Each composition follows the approved reading order, including on mobile. */
+.everyday { display: grid; grid-template-columns: 44% 52%; column-gap: 4%; row-gap: 56px; margin-inline: 4%; }
+.roomPortrait { grid-column: 1; grid-row: 1 / span 2; }
+.breakfast { grid-column: 2; margin-top: 24%; }
+.bread { grid-column: 2; width: 65%; justify-self: end; }
+.closeEmbrace { width: 44%; margin: var(--pause) 0 var(--pause) 13%; }
+.dance { display: flex; align-items: flex-start; justify-content: space-between; margin: 0 6% var(--pause); }
+.turn { width: 42%; }
+.laughter { width: 52%; margin-top: 13%; }
+.morning { margin: 0 4% var(--pause); }
+.reflection { width: 72%; }
+.kiss { width: 39%; margin: 64px 0 0 auto; }
+.letters { margin-bottom: var(--pause); }
+.letterReaction { width: 84%; margin-left: 3%; }
+.letterReading { width: 58%; margin: 72px 6% 0 auto; }
+.keepsakes { width: 40%; margin: 0 auto var(--pause); }
+.intimacy { width: 80%; margin: 0 auto var(--pause); }
+.quiet { width: 48%; margin: 0 auto calc(var(--pause) * 1.2); }
+.lastPhoto { width: 56%; margin-inline: auto; }
+.signature { padding: 60px 6% 0; text-align: center; }
+.signature h2 { font-size: clamp(1.8rem, 3.2vw, 3rem); line-height: 1.2; text-wrap: balance; }
+.signature p { margin-top: 24px; color: var(--olive); }
+.footer { margin: 72px 6% 0; padding: 24px 0 40px; border-top: 1px solid var(--line); text-align: center; }
+.returnLink { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--olive); }
+.returnLink svg { transform: rotate(180deg); }
+.returnLink:hover { text-decoration: underline; text-underline-offset: 5px; }
+
+@media (min-width: 601px) and (max-width: 900px) {
+  .opening { margin-inline: 6%; gap: 6%; }
+  .openingCopy { width: 31.5%; padding-left: 0; }
+  .heroPhoto { width: 62.5%; }
+  .reflection { width: 78%; }
+  .kiss { width: 44%; }
+  .keepsakes, .quiet { width: 48%; }
+  .lastPhoto { width: 58%; }
+}
+
+@media (min-width: 901px) and (max-width: 1199px) {
+  .opening { gap: 6%; margin-inline: 6%; }
+  .openingCopy { width: 35%; padding-left: 2%; }
+  .heroPhoto { width: 55%; }
+  .letterReaction { width: 82%; }
+  .intimacy { width: 78%; }
+  .quiet { width: 46%; }
+  .lastPhoto { width: 53%; }
+}
+
+@media (max-width: 600px) {
+  .page { --pause: 76px; padding-top: 32px; }
+  .opening { display: block; margin: 0; }
+  .openingCopy { width: auto; padding: 0; margin: 0 9% 28px; }
+  .openingCopy h1 { font-size: 4.5rem; margin-bottom: 12px; }
+  .openingCopy p { font-size: .6875rem; }
+  .heroPhoto { width: 88%; margin-inline: auto; }
+  .introduction { margin-block: 48px 72px; }
+  .rule { height: 28px; margin-bottom: 20px; }
+  .everyday { display: block; margin: 0; }
+  .roomPortrait { width: 76%; margin-left: 6%; }
+  .breakfast { width: 88%; margin: 48px 4% 0 auto; }
+  .bread { width: 62%; margin: 32px 9% 0 auto; }
+  .closeEmbrace { width: 80%; margin-left: 6%; }
+  .dance { display: block; margin-inline: 0; }
+  .turn { width: 74%; margin-left: 6%; }
+  .laughter { width: 88%; margin: 48px 4% 0 auto; }
+  .morning { margin-inline: 0; }
+  .reflection { width: 92%; margin-inline: auto; }
+  .kiss { width: 78%; margin: 48px 6% 0 auto; }
+  .letterReaction { width: 92%; margin-inline: auto; }
+  .letterReading { width: 88%; margin: 40px 4% 0 auto; }
+  .keepsakes { width: 78%; }
+  .intimacy { width: 92%; }
+  .quiet { width: 74%; }
+  .lastPhoto { width: 86%; }
+  .signature { padding-top: 40px; }
+  .signature h2 { max-width: 310px; margin-inline: auto; }
+  .signature p { margin-top: 20px; }
+  .footer { margin-top: 56px; }
+}
