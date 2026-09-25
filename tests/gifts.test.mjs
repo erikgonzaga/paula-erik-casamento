@@ -104,8 +104,6 @@ test('Funding modes, private contributions and confirmed-only public progress', 
     await assert.rejects(contribute(goal, 10, 'pending', null, new Date().toISOString()));
     await assert.rejects(contribute(goal, 10, 'unknown'));
     await contribute(goal, 20, 'confirmed');
-    await assert.rejects(contribute(goal, 80.01), /gift_goal_exceeded/);
-    await assert.rejects(contribute(goal, 80.01, 'confirmed'), /gift_goal_exceeded/);
     const pending = await contribute(goal, 80);
     const competing = await contribute(goal, 80);
     await contribute(goal, 30, 'cancelled');
@@ -146,11 +144,12 @@ test('Funding modes, private contributions and confirmed-only public progress', 
     }
     await db.exec('set role service_role');
     await db.query("update gift_contributions set payment_status='confirmed',confirmed_at=now() where id=$1", [pending]);
-    await assert.rejects(db.query("update gift_contributions set payment_status='confirmed',confirmed_at=now() where id=$1", [competing]));
+    await db.query("update gift_contributions set payment_status='confirmed',confirmed_at=now() where id=$1", [competing]);
     await assert.rejects(contribute(goal, 1));
     const reached = (await db.query('select * from get_gift_progress() where gift_id=$1', [goal])).rows[0];
     assert.equal(reached.goal_reached, true);
-    assert.equal(Number(reached.total_raised), 100);
+    assert.equal(Number(reached.total_raised), 180);
+    assert.equal(Number(reached.percentage), 100);
     assert.equal(Number(reached.remaining_amount), 0);
     await db.query('update gifts set active=false where id=$1', [goal]);
     assert.equal((await db.query('select * from get_gift_progress() where gift_id=$1', [goal])).rows.length, 0);
@@ -226,7 +225,7 @@ test('Persistent idempotency and pending expiration remain private and out of pr
       values ($1,'Pending recente',50,'pix',$2,repeat('c',64))
       returning id,created_at,expires_at,payment_status`, [gift, pendingKey]);
     const lifetime = (new Date(pending.rows[0].expires_at) - new Date(pending.rows[0].created_at)) / 1000;
-    assert.equal(lifetime, 15 * 60);
+    assert.equal(lifetime, 30 * 60);
     assert.equal(pending.rows[0].payment_status, 'pending');
     await assert.rejects(db.query(`insert into gift_contributions(
       gift_id,contributor_name,amount,payment_method,idempotency_key,request_fingerprint)
@@ -327,4 +326,218 @@ test('Expiration accepts the contribution id and changes only overdue pending ro
   } finally {
     await db.close();
   }
+});
+
+test('Previously issued Pix confirm above a goal, reconcile once and remain private', async () => {
+  const db = await createDatabase();
+  try {
+    const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
+      values ('Meta com Pix','meta-com-pix','house','goal',100) returning id`)).rows[0].id;
+    await db.exec('set role service_role');
+    const first = (await db.query(`insert into gift_contributions(
+        gift_id,contributor_name,contributor_email,amount,payment_method,idempotency_key,request_fingerprint)
+      values ($1,'Primeira','primeira@example.com',60,'pix',gen_random_uuid(),repeat('a',64)) returning id`, [gift])).rows[0];
+    const second = (await db.query(`insert into gift_contributions(
+        gift_id,contributor_name,contributor_email,amount,payment_method,idempotency_key,request_fingerprint)
+      values ($1,'Segunda','segunda@example.com',50,'pix',gen_random_uuid(),repeat('b',64)) returning id`, [gift])).rows[0];
+
+    const providerKey = '50000000-0000-4000-8000-000000000001';
+    const attempt = (await db.query(
+      `select * from claim_gift_payment_attempt($1,$2,30)`, [first.id, providerKey],
+    )).rows[0];
+    assert.equal(attempt.can_create, true);
+    assert.equal(Number(attempt.amount), 60);
+    assert.equal(attempt.external_reference, `gift-contribution-${first.id}`);
+    await db.query("update payment_attempts set creation_lease_until=now()-interval '1 second' where id=$1", [attempt.id]);
+    const resumed = (await db.query('select * from claim_gift_payment_attempt($1,$2,30)',
+      [first.id, '50000000-0000-4000-8000-000000000099'])).rows[0];
+    assert.equal(resumed.id, attempt.id);
+    assert.equal(resumed.provider_idempotency_key, providerKey);
+    assert.equal(resumed.can_create, true);
+    assert.equal((await db.query('select count(*)::int as count from payment_attempts where contribution_id=$1',
+      [first.id])).rows[0].count, 1);
+    assert.equal((await db.query(`select expire_gift_contribution_pending($1) as count`, [first.id])).rows[0].count, 0);
+    const secondAttempt = (await db.query(`select * from claim_gift_payment_attempt($1,$2,30)`,
+      [second.id, '50000000-0000-4000-8000-000000000002'])).rows[0];
+    assert.equal(secondAttempt.can_create, true);
+
+    const reconcileArgs = [
+      attempt.id, 'ORD-TEST-1', 'PAY-TEST-1', 'processed', 'accredited', 60,
+      attempt.external_reference, attempt.expires_at, null, null, null,
+    ];
+    await assert.rejects(db.query(
+      `select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`,
+      [...reconcileArgs.slice(0, 6), 'gift-contribution:wrong-reference', ...reconcileArgs.slice(7)],
+    ), /payment_attempt_mismatch/);
+    assert.equal((await db.query(
+      `select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`, reconcileArgs,
+    )).rows[0].status, 'confirmed');
+    const confirmedAt = (await db.query(`select confirmed_at from gift_contributions where id=$1`, [first.id])).rows[0].confirmed_at;
+    assert.ok(confirmedAt);
+    assert.equal((await db.query(
+      `select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`, reconcileArgs,
+    )).rows[0].status, 'confirmed');
+    assert.equal((await db.query(`select confirmed_at from gift_contributions where id=$1`, [first.id])).rows[0].confirmed_at.toISOString(), confirmedAt.toISOString());
+    assert.equal(Number((await db.query(`select total_raised from get_gift_progress() where gift_id=$1`, [gift])).rows[0].total_raised), 60);
+    assert.equal((await db.query(`select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`, [
+      secondAttempt.id, 'ORD-TEST-2', 'PAY-TEST-2', 'processed', 'accredited', 50,
+      secondAttempt.external_reference, secondAttempt.expires_at, null, null, null,
+    ])).rows[0].status, 'confirmed');
+    const overGoal = (await db.query('select * from get_gift_progress() where gift_id=$1', [gift])).rows[0];
+    assert.equal(Number(overGoal.total_raised), 110);
+    assert.equal(Number(overGoal.percentage), 100);
+    assert.equal(Number(overGoal.remaining_amount), 0);
+    await assert.rejects(db.query(`insert into gift_contributions(
+      gift_id,contributor_name,contributor_email,amount,payment_method,idempotency_key,request_fingerprint)
+      values ($1,'Nova','nova@example.com',1,'pix',gen_random_uuid(),repeat('c',64))`, [gift]), /gift_goal_reached/);
+
+    await db.exec('reset role');
+    for (const role of ['anon', 'authenticated']) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(db.query('select * from payment_attempts'), { code: '42501' });
+      await assert.rejects(db.query('select * from payment_webhook_events'), { code: '42501' });
+      await db.exec('reset role');
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test('Corrective migration updates only unissued legacy attempts and preserves their identity', async () => {
+  const migrationName = '202609220002_fix_mercado_pago_external_reference.sql';
+  const db = await createDatabase({ beforeMigration: migrationName });
+  try {
+    const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
+      values ('Referencias Pix','referencias-pix','house','goal',1000) returning id`)).rows[0].id;
+    await db.exec('set role service_role');
+    async function legacyAttempt(name, key) {
+      const contribution = (await db.query(`insert into gift_contributions(
+        gift_id,contributor_name,contributor_email,amount,payment_method,idempotency_key,request_fingerprint)
+        values ($1,$2,$3,50,'pix',gen_random_uuid(),repeat('a',64)) returning id`,
+      [gift, name, `${name.toLowerCase()}@example.com`])).rows[0];
+      return (await db.query('select * from claim_gift_payment_attempt($1,$2,30)',
+        [contribution.id, key])).rows[0];
+    }
+    const safeKey = '50000000-0000-4000-8000-000000000021';
+    const safe = await legacyAttempt('Seguro', safeKey);
+    const issued = await legacyAttempt('Emitido', '50000000-0000-4000-8000-000000000022');
+    const safeBefore = (await db.query('select * from payment_attempts where id=$1', [safe.id])).rows[0];
+    assert.equal(safe.external_reference, `gift-contribution:${safe.contribution_id}`);
+    await db.query("update payment_attempts set provider_order_id='ORD-ALREADY-ISSUED' where id=$1", [issued.id]);
+    await db.exec('reset role');
+
+    const migration = await readFile(new URL(`../supabase/migrations/${migrationName}`, import.meta.url), 'utf8');
+    await db.exec(migration);
+    await db.exec(migration);
+    await db.exec('set role service_role');
+    const migrated = (await db.query('select * from payment_attempts where id=$1', [safe.id])).rows[0];
+    assert.equal(migrated.id, safe.id);
+    assert.equal(migrated.contribution_id, safe.contribution_id);
+    assert.equal(migrated.provider_idempotency_key, safeKey);
+    assert.equal(Number(migrated.amount), Number(safe.amount));
+    assert.equal(migrated.created_at.toISOString(), safeBefore.created_at.toISOString());
+    assert.equal(migrated.external_reference, `gift-contribution-${safe.contribution_id}`);
+    assert.equal((await db.query('select external_reference from gift_contributions where id=$1',
+      [safe.contribution_id])).rows[0].external_reference, migrated.external_reference);
+    const untouched = (await db.query('select * from payment_attempts where id=$1', [issued.id])).rows[0];
+    assert.equal(untouched.external_reference, issued.external_reference);
+    assert.equal(untouched.provider_order_id, 'ORD-ALREADY-ISSUED');
+    assert.equal((await db.query('select external_reference from gift_contributions where id=$1',
+      [issued.contribution_id])).rows[0].external_reference, issued.external_reference);
+
+    await db.query("update payment_attempts set creation_lease_until=now()-interval '1 second' where id=$1", [safe.id]);
+    const resumed = (await db.query('select * from claim_gift_payment_attempt($1,$2,30)',
+      [safe.contribution_id, '50000000-0000-4000-8000-000000000099'])).rows[0];
+    assert.equal(resumed.id, safe.id);
+    assert.equal(resumed.provider_idempotency_key, safeKey);
+    assert.equal(resumed.external_reference, migrated.external_reference);
+    await assert.rejects(db.query('update payment_attempts set external_reference=$1 where id=$2',
+      ['arbitrary-reference', safe.id]), /payment_attempt_identity_immutable/);
+    await assert.rejects(db.query('update payment_attempts set provider_idempotency_key=gen_random_uuid() where id=$1',
+      [safe.id]), /payment_attempt_identity_immutable/);
+
+    const fresh = await legacyAttempt('Novo', '50000000-0000-4000-8000-000000000023');
+    assert.equal(fresh.external_reference, `gift-contribution-${fresh.contribution_id}`);
+    assert.equal((await db.query('select external_reference from gift_contributions where id=$1',
+      [fresh.contribution_id])).rows[0].external_reference, fresh.external_reference);
+    assert.equal((await db.query('select count(*)::int as count from payment_attempts where contribution_id=$1',
+      [safe.contribution_id])).rows[0].count, 1);
+  } finally { await db.close(); }
+});
+
+test('R$1,000 goal admits R$200 from R$900, then closes to new contributions', async () => {
+  const db = await createDatabase();
+  try {
+    const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
+      values ('Meta de mil','meta-de-mil','house','goal',1000) returning id`)).rows[0].id;
+    await db.exec('set role service_role');
+    await db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,amount,payment_method,
+      payment_status,confirmed_at,idempotency_key,request_fingerprint)
+      values ($1,'Anterior','anterior@example.com',900,'pix','confirmed',now(),gen_random_uuid(),repeat('a',64))`, [gift]);
+    const pending = (await db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,amount,
+      payment_method,idempotency_key,request_fingerprint)
+      values ($1,'Nova','nova@example.com',200,'pix',gen_random_uuid(),repeat('b',64)) returning id`, [gift])).rows[0];
+    const attempt = (await db.query('select * from claim_gift_payment_attempt($1,$2,30)',
+      [pending.id, '50000000-0000-4000-8000-000000000003'])).rows[0];
+    assert.equal((await db.query(`select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`, [
+      attempt.id, 'ORD-1000-1', 'PAY-1000-1', 'processed', 'accredited', 200,
+      attempt.external_reference, attempt.expires_at, null, null, null,
+    ])).rows[0].status, 'confirmed');
+    const progress = (await db.query('select * from get_gift_progress() where gift_id=$1', [gift])).rows[0];
+    assert.equal(Number(progress.total_raised), 1100);
+    assert.equal(Number(progress.percentage), 100);
+    assert.equal(Number(progress.remaining_amount), 0);
+    assert.equal(progress.goal_reached, true);
+    await assert.rejects(db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,amount,
+      payment_method,idempotency_key,request_fingerprint)
+      values ($1,'Tardia','tardia@example.com',1,'pix',gen_random_uuid(),repeat('c',64))`, [gift]), /gift_goal_reached/);
+  } finally { await db.close(); }
+});
+
+test('Two issued R$100 Pix at R$900 both confirm, including one after local expiry', async () => {
+  const db = await createDatabase();
+  try {
+    const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
+      values ('Meta com dois Pix','meta-dois-pix','house','goal',1000) returning id`)).rows[0].id;
+    await db.exec('set role service_role');
+    await db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,amount,payment_method,
+      payment_status,confirmed_at,idempotency_key,request_fingerprint)
+      values ($1,'Anterior','anterior@example.com',900,'pix','confirmed',now(),gen_random_uuid(),repeat('a',64))`, [gift]);
+    const attempts = [];
+    for (const [index, label] of ['Primeiro', 'Segundo'].entries()) {
+      const contribution = (await db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,
+        amount,payment_method,idempotency_key,request_fingerprint,created_at,expires_at)
+        values ($1,$2,$3,100,'pix',gen_random_uuid(),repeat('b',64),
+          case when $4 then now()-interval '16 minutes' else now() end,
+          case when $4 then now()-interval '1 minute' else now()+interval '15 minutes' end) returning id`,
+      [gift, label, `guest${index}@example.com`, index === 1])).rows[0];
+      attempts.push((await db.query('select * from claim_gift_payment_attempt($1,$2,30)',
+        [contribution.id, `50000000-0000-4000-8000-00000000000${index + 4}`])).rows[0]);
+    }
+    for (const [index, attempt] of attempts.entries()) {
+      const expiredAt = index === 1 ? new Date(Date.now() - 60_000).toISOString() : attempt.expires_at;
+      if (index === 1) {
+        await db.query('update payment_attempts set expires_at=$1 where id=$2', [expiredAt, attempt.id]);
+        assert.equal((await db.query('select expire_gift_contribution_pending($1) as count',
+          [attempt.contribution_id])).rows[0].count, 0);
+      }
+      assert.equal((await db.query(`select reconcile_gift_payment_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as status`, [
+        attempt.id, `ORD-1000-${index + 2}`, `PAY-1000-${index + 2}`, 'processed', 'accredited', 100,
+        attempt.external_reference, expiredAt, null, null, null,
+      ])).rows[0].status, 'confirmed');
+      if (index === 0) {
+        assert.equal(Number((await db.query('select total_raised from get_gift_progress() where gift_id=$1',
+          [gift])).rows[0].total_raised), 1000);
+        await assert.rejects(db.query(`insert into gift_contributions(gift_id,contributor_name,contributor_email,
+          amount,payment_method,idempotency_key,request_fingerprint)
+          values ($1,'Depois da meta','depois@example.com',1,'pix',gen_random_uuid(),repeat('c',64))`,
+        [gift]), /gift_goal_reached/);
+      }
+    }
+    const progress = (await db.query('select * from get_gift_progress() where gift_id=$1', [gift])).rows[0];
+    assert.equal(Number(progress.total_raised), 1100);
+    assert.equal(Number(progress.percentage), 100);
+    assert.equal((await db.query(`select count(*)::int as count from gift_contributions
+      where gift_id=$1 and payment_status='confirmed'`, [gift])).rows[0].count, 3);
+  } finally { await db.close(); }
 });

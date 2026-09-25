@@ -59,13 +59,15 @@ A estrutura visual está implementada e aprovada em `/presentes`:
 
 O catálogo agora possui a migration versionada `202609140001_gifts_catalog.sql`, leitura pública limitada por RLS a registros ativos e busca server-side com a chave `anon`. Presentes regulares e Insanos vêm da mesma tabela, mas permanecem separados na renderização. O seed `supabase/seeds/gifts-development.sql` é opcional, separado e exclusivo para ambientes descartáveis de desenvolvimento.
 
-A migration `202609170001_gift_funding.sql` prepara metas (`goal`), valor livre (`open`) e contribuições fixas (`fixed`), com registros privados em `gift_contributions` e progresso público agregado. O casal informou a aplicação bem-sucedida desta migration, de `202609150001_gifts_party_category.sql` e de `202609170002_gift_contribution_idempotency_expiry.sql` no Supabase. A correção ainda não aplicada `202609170003_fix_gift_contribution_expiry.sql` permite à rotina protegida localizar uma tentativa tanto pelo UUID da contribuição quanto pela chave de idempotência. O formulário cria registros privados `pending` pelo servidor, mas ainda não há pagamento real, QR Code, checkout, webhook ou confirmação automática. Detalhes em `docs/PRESENTES-CONTRIBUICOES.md`.
+A migration `202609170001_gift_funding.sql` prepara metas (`goal`), valor livre (`open`) e contribuições fixas (`fixed`), com registros privados em `gift_contributions` e progresso público agregado. O casal confirmou no Supabase o histórico de migrations até `202609170003_fix_gift_contribution_expiry.sql`. O formulário cria registros privados `pending` pelo servidor; o fluxo Pix Mercado Pago está implementado em ambiente TEST. Detalhes em `docs/PRESENTES-CONTRIBUICOES.md`.
 
 O casal informou que o catálogo definitivo de 38 presentes já está no Supabase. O seed manual `supabase/catalogs/20260917_gifts_definitive_v1.sql` permanece como referência, sem execução nesta etapa. A viagem é para Gramado; seu texto editorial aparece ao selecionar Viagem. Cards regulares exibem progresso real das metas pela RPC pública agregada, sem contribuições individuais. Os estados parcial/completo são testados apenas em fixtures locais; nenhum progresso fictício é inserido no site ou no banco. Valores, descrições e decisões de imagens estão em `docs/CATALOGO-DEFINITIVO.md`.
 
+Em 22/09/2026 foi preparada a integração de Pix com Mercado Pago Checkout Transparente pela Orders API. O fluxo cria a contribuição e uma tentativa privada, apresenta o QR Code, consulta o status pelo servidor e valida webhooks assinados. O casal confirmou no schema remoto os objetos de `202609220001_mercado_pago_pix_orders.sql` e o formato com hífen de `202609220002_fix_mercado_pago_external_reference.sql`; ambas foram executadas manualmente e ainda não constam no histórico de migrations. Uma Order Pix TEST foi criada com sucesso, mas notificações automáticas e o simulador retornam `SignatureMismatch`/401 no webhook; a homologação permanece bloqueada. Os passos estão em `docs/PRESENTES-CONTRIBUICOES.md`.
+
 ### Fases futuras
 
-- Integração real de contribuições e meios de pagamento.
+- Homologação da integração Pix em ambiente de teste, seguida de decisão explícita antes da ativação em produção.
 - Administração protegida para convidados, convites, RSVP e presentes.
 - Gestão de conteúdo, se ainda desejada.
 - Auditoria final, publicação consolidada e domínio.
@@ -119,7 +121,7 @@ O endereço de produção informado durante o desenvolvimento é `https://paula-
 
 ## Transferência para outro computador
 
-Nova fase administrativa (20/09/2026): fundação local somente leitura, iniciada no checkpoint `5248eb6`. Login usa Supabase Auth; acesso exige administrador explicitamente ativo e sessão própria revogável. Nenhuma página pública, catálogo, contribuição ou RSVP foi alterado. A migration e o primeiro usuário dependem de execução manual pelo casal; não houve operação remota ou publicação. Detalhes em [Administração](ADMINISTRACAO.md).
+Nova fase administrativa (20/09/2026): fundação somente leitura, iniciada no checkpoint `5248eb6`. Login usa Supabase Auth; acesso exige administrador explicitamente ativo e sessão própria revogável. O casal confirmou os objetos da migration administrativa no schema remoto, executados manualmente; a versão ainda não consta no histórico de migrations. Detalhes em [Administração](ADMINISTRACAO.md).
 
 1. Clone `git@github.com:erikgonzaga/paula-erik-casamento.git` e confira a branch correta.
 2. Instale Node.js 22 ou superior e rode `npm ci`.

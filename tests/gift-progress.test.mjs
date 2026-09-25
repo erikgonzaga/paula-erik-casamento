@@ -54,9 +54,11 @@ test('Visual percentages are bounded and achieved goals always show 100', () => 
     assert.equal(clampPercentage(input), expected);
   }
   assert.equal(combineGiftProgress([gift], [{ ...row, percentage: -10 }])[0].progress.percentage, 0);
-  assert.equal(combineGiftProgress([gift], [{ ...row, percentage: 120 }])[0].progress.percentage, 100);
+  assert.equal(combineGiftProgress([gift], [{ ...row, percentage: 120 }])[0].progress.percentage, 99.99);
   assert.equal(combineGiftProgress([gift], [{ ...row, percentage: 99, goal_reached: true }])[0].progress.percentage, 100);
-  assert.equal(combineGiftProgress([gift], [{ ...row, percentage: 100 }])[0].progress.goal_reached, true);
+  assert.equal(combineGiftProgress([gift], [{ ...row, percentage: 100 }])[0].progress.goal_reached, false);
+  assert.deepEqual(combineGiftProgress([gift], [{ ...row, total_raised: 3800, percentage: 100, remaining_amount: 0, goal_reached: true }])[0].progress,
+    { target_amount: 3500, total_raised: 3800, percentage: 100, remaining_amount: 0, goal_reached: true });
 });
 
 test('pt-BR amounts use two decimal places and percentages stay visually clean', () => {

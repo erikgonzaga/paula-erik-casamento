@@ -1,12 +1,12 @@
 # Metas e contribuições — etapa de arquitetura
 
-Migrations estruturais aplicadas conforme informado pelo casal: `supabase/migrations/202609170001_gift_funding.sql` e `supabase/migrations/202609170002_gift_contribution_idempotency_expiry.sql`. A correção `202609170003_fix_gift_contribution_expiry.sql` existe apenas no repositório e ainda não foi aplicada no Supabase. O catálogo definitivo permanece inalterado.
+O casal confirmou o histórico remoto de migrations até `202609170003_fix_gift_contribution_expiry.sql`. Os objetos de `202609220001_mercado_pago_pix_orders.sql` e o formato com hífen de `202609220002_fix_mercado_pago_external_reference.sql` foram confirmados no schema remoto após execução manual. Essas versões não constam no histórico de migrations; não reexecutar os SQLs nesta etapa. O catálogo definitivo permanece inalterado.
 
 ## Catálogo final
 
 `gifts` mantém `id`, `name`, `slug` único, `description`, `category`, `image_url`, `active`, `featured`, `display_order`, `gift_type`, `allow_multiple`, `created_at` e `updated_at`, com tipos/defaults/constraints anteriores. `price` é renomeada para `target_amount numeric(10,2)` nullable; os valores existentes são preservados. Adiciona `funding_mode text not null default 'goal'`.
 
-- `goal`: meta positiva obrigatória; soma confirmada não pode ultrapassá-la. Ao atingir a meta, novas contribuições normais são recusadas.
+- `goal`: meta positiva obrigatória, sem teto financeiro. Uma contribuição iniciada antes de a meta ser atingida pode ultrapassar o restante; ao atingir a meta confirmada, novas contribuições são recusadas. Pix já emitidos continuam válidos e são registrados integralmente se pagos.
 - `open`: nesta implementação, meta obrigatoriamente nula, para evitar um teto ambíguo. Contribuições positivas livres.
 - `fixed`: valor positivo obrigatório por contribuição, sem teto coletivo.
 - `allow_multiple=false`: no máximo uma contribuição confirmada, inclusive em `open`/`fixed`. Não significa reserva por uma contribuição pendente.
@@ -23,10 +23,11 @@ O UPDATE da migration apenas classifica registros Insanos eventualmente existent
 | id | UUID PK, gerado automaticamente |
 | gift_id | UUID obrigatório, FK gifts; exclusão do presente restrita |
 | contributor_name | Texto obrigatório, 1–150 caracteres após trim |
+| contributor_email | E-mail obrigatório, normalizado em minúsculas; usado no fluxo privado de pagamento |
 | contributor_phone | Texto opcional, 8–32 caracteres após trim |
 | amount | numeric(10,2), positivo, não NaN |
 | payment_status | pending (default), confirmed, cancelled, failed, expired |
-| payment_method | pix ou external; apenas classificação, sem integração |
+| payment_method | pix ou external; Pix usa a tentativa privada do Mercado Pago |
 | external_reference | Texto opcional, único quando não nulo, 1–255 caracteres, sem espaços nas extremidades nem caracteres de controle |
 | message | Texto opcional, até 2000 caracteres |
 | vest_name | Texto opcional, 1–150 caracteres; obrigatório para Insanos pendentes/confirmados |
@@ -35,7 +36,7 @@ O UPDATE da migration apenas classifica registros Insanos eventualmente existent
 | confirmed_at | timestamptz, obrigatório somente quando confirmed; nulo nos demais estados |
 | idempotency_key | UUID obrigatório e único por tentativa |
 | request_fingerprint | SHA-256 hexadecimal obrigatório; nunca exposto publicamente |
-| expires_at | timestamptz obrigatório, exatamente created_at + 15 minutos |
+| expires_at | timestamptz obrigatório; novas tentativas Pix usam 30 minutos |
 
 Não existe escrita direta pelo cliente nem lista pública de contribuições. O endpoint servidor validado é a única entrada. Uma lista oficial futura deverá ser server-side e filtrar apenas `confirmed`. Não há ranking público.
 
@@ -55,7 +56,7 @@ RLS de `gifts` permanece intacta: público lê somente ativos. `gift_contributio
 
 Para open/fixed, percentual e restante são nulos e meta alcançada é falso. Não retorna IDs individuais, quantidades, nomes, telefones, coletes ou mensagens. A página agora consulta essa RPC no servidor e combina por gift_id com o catálogo. Apenas goal recebe dados de progresso nas props públicas; totais open/fixed são descartados antes da renderização.
 
-Para goal, card e modal mostram meta, barra acessível (role=progressbar, aria-valuemin=0, aria-valuemax=100, aria-valuenow), percentual e total confirmado; restante aparece somente com arrecadação parcial. `goal_reached=true` ou percentual visual de 100% mostra “Meta alcançada ❤️” e remove o CTA normal do card. Para open aparece “Contribua com o valor que desejar”; fixed/Insanos não mostram barra. O formulário cria somente `pending`; ainda não existe gateway.
+Para goal, card e modal mostram meta, barra acessível (role=progressbar, aria-valuemin=0, aria-valuemax=100, aria-valuenow), percentual e total confirmado; restante aparece somente com arrecadação parcial. `goal_reached=true` ou percentual visual de 100% mostra “Meta alcançada ❤️” e remove o CTA normal do card. Para open aparece “Contribua com o valor que desejar”; fixed/Insanos não mostram barra. O formulário cria `pending` e, com a configuração TEST ativa, solicita um Pix pela Orders API.
 
 A RPC também não retorna `external_reference`. A agregação usa apenas gift_id, amount e payment_status das contribuições dos presentes ativos; a divisão é condicionada a goal e protegida com NULLIF. Apesar de não expor registros individuais, totais exatos públicos não garantem anonimato estatístico: uma contribuição isolada ou diferenças entre consultas podem revelar um valor individual, sem identificar seu autor. Eliminar essa inferência exige outra decisão de produto (suprimir/agrupar/atrasar agregados), incompatível com garantir totais exatos sempre atualizados. Revisar esse limite antes de disponibilizar progresso público.
 
@@ -63,21 +64,48 @@ A RPC também não retorna `external_reference`. A agregação usa apenas gift_i
 
 `POST /api/gift-contributions` é o único caminho do navegador para iniciar uma contribuição. O endpoint exige mesma origem, body JSON limitado e rate limiting. A chave `service_role` fica exclusivamente no servidor. Cada montagem do formulário gera o UUID v4 somente no primeiro envio e o preserva em retries. O servidor normaliza o payload relevante, persiste apenas seu SHA-256 canônico e garante unicidade da chave no PostgreSQL.
 
-Para `goal`, o valor textual é convertido em centavos inteiros e comparado ao `remaining_amount` mais recente. Para `open`, aceita-se qualquer valor positivo dentro de `numeric(10,2)`. Para `fixed`, o valor recebido do navegador não participa da decisão: `target_amount` do banco determina a contribuição. Insanos exigem nome de colete. Nome e textos são aparados; WhatsApp brasileiro é normalizado para `+55...`.
+Para `goal`, o valor textual é convertido em centavos inteiros e o progresso mais recente determina se a meta já foi atingida; o valor pode exceder o restante. Para `open`, aceita-se qualquer valor positivo dentro de `numeric(10,2)`. Para `fixed`, o valor recebido do navegador não participa da decisão: `target_amount` do banco determina a contribuição. Insanos exigem nome de colete. Nome e textos são aparados; WhatsApp brasileiro é normalizado para `+55...`.
 
 O retry chama primeiro `expire_gift_contribution_pending`, depois consulta a chave. Fingerprint igual devolve somente `{ok,payment_status}` da tentativa existente; fingerprint diferente retorna conflito. Uma corrida entre dois primeiros INSERTs também é resolvida pela unicidade e nova leitura. Chave e fingerprint nunca retornam ao navegador.
 
-`expires_at` nasce exatamente 15 minutos depois de `created_at`. A função protegida atualiza somente linhas vencidas que ainda estejam `pending`, sem apagar histórico; a correção `202609170003` permite localizar uma linha específica pelo `id` privado da contribuição ou por sua chave de idempotência, além de preservar a futura varredura administrativa sem argumento. O retry vencido recebe `expired`. Fechar e reabrir o formulário constitui nova tentativa e gera nova chave.
+Com a migration de pagamentos, `expires_at` nasce 30 minutos depois de `created_at`. A expiração local continua permitida apenas antes de existir uma tentativa no provedor; depois da emissão do Pix, a consulta autenticada ao Mercado Pago é a fonte do status. O histórico não é apagado. Fechar e reabrir o formulário constitui nova tentativa e gera nova chave.
 
 ## Concorrência e decisões antes de produção
 
 O trigger `validate_gift_contribution` serializa inserções e atualizações pela linha de `gifts`. Atualiza somente `updated_at` para adquirir bloqueio de escrita; isso também força conflitos de serialização em transações com snapshot antigo em REPEATABLE READ. Recalcula o total confirmado após o bloqueio, excluindo a própria contribuição em edição. O servidor futuro deve repetir transações em erros de serialização/deadlock.
 
-Pendentes não reservam saldo. Duas pendentes podem caber individualmente; na confirmação, apenas as que ainda couberem serão aceitas. `expired` significa apenas que a tentativa expirou para a experiência do site. Uma confirmação bancária tardia do C6 deverá passar por conciliação segura antes de qualquer transição posterior. O esquema não bloqueia essa transição, mas ela não foi implementada. Antes de receber dinheiro real, definir idempotência do webhook, conciliação, estorno e tratamento de valores recebidos após esgotamento.
+Uma contribuição `pending` ainda não entra no progresso público. Para `goal`, o Pix pode ser emitido enquanto o total confirmado estiver abaixo da meta; tentativas Pix anteriores podem confirmar depois e fazer o total recebido ultrapassar a meta. A reserva privada continua protegendo presentes únicos (`allow_multiple=false`). A reconciliação confirma pagamentos `processed/accredited` mesmo depois da expiração local ou de outra contribuição completar a meta. Antes de receber dinheiro real, validar concorrência em PostgreSQL/Supabase e definir estorno, chargeback, conciliação tardia e tratamento de indisponibilidade.
 
 Não modificar modalidade, meta ou allow_multiple de um presente com contribuições existentes sem um fluxo administrativo transacional que valide o histórico; esse fluxo ainda não existe. Correções/cancelamentos privados podem reabrir saldo. Não há trilha de auditoria financeira implementada.
 
 A renomeação é incompatível com o código antigo que consulta `price`: coordenar migration e publicação, idealmente em janela de manutenção (o catálogo de produção foi informado como vazio). Não publicar o novo código contra o esquema antigo. Confirmar projeto, histórico de migrations e backup antes de aplicar manualmente. Não executar seeds no remoto.
+
+## Mercado Pago Pix — implementação local em TEST
+
+O servidor usa Checkout Transparente com Orders API. `POST /api/gift-contributions` valida o presente e os dados, cria ou reutiliza a contribuição idempotente, reivindica uma tentativa privada e envia a ordem Pix com `X-Idempotency-Key` estável. Em `PAYMENTS_ENVIRONMENT=test`, o payload enviado ao provedor usa os dados oficiais de simulação TEST; o nome e e-mail reais continuam somente no banco privado do site.
+
+A Order inclui um item informativo com `title` consultado de `gifts.name`, `quantity: 1` e `unit_price` igual ao valor da contribuição formatado com duas casas decimais. O item não envia `external_code`: o UUID do presente permanece no banco, pois excede o limite de 30 caracteres aceito nesse campo pela Orders API. Esse item descreve a contribuição para o presente; não representa a compra física de uma unidade. `total_amount`, pagamento e `unit_price` usam a mesma string decimal. O catálogo e os valores persistidos não são modificados por essa apresentação.
+
+A referência externa definitiva é `gift-contribution-<UUID da contribuição>`. A migration incremental substitui `:` por `-` somente em tentativas legadas ainda em `creating`, sem IDs de Order ou pagamento e com contribuição pendente sincronizada. Ela conserva o ID da tentativa e sua `provider_idempotency_key`; tentativas com Order conhecida não são alteradas. O backend continua usando a referência persistida na tentativa para criar, validar e reconciliar a Order, inclusive por GET/webhook. O casal confirmou que a RPC remota já usa o formato com hífen.
+
+O navegador recebe apenas `payment_status`, QR Code/copia e cola, URL HTTPS do comprovante e expiração. A rota `POST /api/gift-contributions/status` usa a chave UUID criada pelo próprio navegador como capacidade de consulta, aplica mesma origem e rate limiting, consulta o provedor no servidor quando o estado está desatualizado e nunca expõe IDs internos ou credenciais.
+
+`POST /api/payments/mercado-pago/webhook` aceita somente eventos `order`, valida `x-signature` e `x-request-id` com o validador oficial, deduplica o evento e busca a ordem autenticadamente antes de reconciliar. O payload da notificação nunca é usado como prova de pagamento. Somente `processed` com detalhe `accredited`, referência, moeda e valor esperados confirma a contribuição; repetições permanecem idempotentes.
+
+Na validação HMAC da Order, passamos ao `WebhookSignatureValidator` oficial do SDK `mercadopago` 3.6.1 o `x-signature` e o `x-request-id` recebidos nos headers, o `data.id` original da query e `MERCADO_PAGO_WEBHOOK_SECRET` do ambiente, conforme o exemplo de [Checkout API Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications). Não fazemos lowercase nem calculamos HMAC alternativo para aceitar notificações. O SDK aplica seu próprio trim, extrai `ts` e `v1` e valida o manifest; assinatura inválida retorna 401. O diagnóstico sanitizado em desenvolvimento/TEST apenas registra a estrutura da falha, sem alterar a decisão de segurança. A Order só é processada após validação bem-sucedida.
+
+Estado de homologação: a criação de Order Pix TEST funcionou, mas notificações automáticas e o simulador oficial retornam `SignatureMismatch`/401. A validação de assinatura permanece obrigatória; o webhook ainda não está homologado. O código C6 é experimental e está fora do caminho crítico desta integração.
+
+Para homologar manualmente:
+
+1. conferir backup e ordem das migrations no projeto Supabase de desenvolvimento;
+2. reconciliar em etapa própria o histórico de migrations com o schema remoto, sem reexecutar `202609220001` ou `202609220002`;
+3. configurar os cinco nomes documentados em `.env.example`, sempre por canal seguro, mantendo `PAYMENTS_ENVIRONMENT=test`;
+4. cadastrar a URL HTTPS `/api/payments/mercado-pago/webhook` para eventos Orders;
+5. resolver o bloqueio de assinatura sem aceitar notificações inválidas e então testar aprovação, expiração, retry idempotente, webhook duplicado, meta concorrente e presente único;
+6. revisar tabela administrativa, logs sem PII e conciliação antes de qualquer decisão de produção.
+
+Esta etapa de versionamento não executa operações remotas nem modifica o banco.
 
 ## Validação
 

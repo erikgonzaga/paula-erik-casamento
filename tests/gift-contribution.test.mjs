@@ -19,12 +19,26 @@ const request = {
   amount: '50,00',
   contributor_name: '  Pessoa de Teste  ',
   contributor_phone: '(11) 99999-9999',
+  contributor_email: '  Pessoa@Example.COM  ',
   message: '  Com carinho  ',
 };
 const goal = { id, active: true, funding_mode: 'goal', target_amount: '3500.00', gift_type: 'regular' };
 const progress = { remaining_amount: '2275.00', goal_reached: false };
 const open = { ...goal, funding_mode: 'open', target_amount: null };
 const fixed = { ...goal, funding_mode: 'fixed', target_amount: '75.00', gift_type: 'insanos' };
+
+function stored(contribution, paymentStatus = 'pending') {
+  return {
+    id: '40000000-0000-4000-8000-000000000001',
+    gift_id: contribution.gift_id,
+    contributor_name: contribution.contributor_name,
+    contributor_email: contribution.contributor_email,
+    amount: contribution.amount,
+    request_fingerprint: contribution.request_fingerprint,
+    payment_status: paymentStatus,
+    expires_at: '2026-09-22T16:00:00.000Z',
+  };
+}
 
 function errorCode(code) {
   return error => error?.code === code;
@@ -40,6 +54,7 @@ test('goal/open/fixed contributions are normalized without trusting browser mone
     gift_id: id,
     contributor_name: 'Pessoa de Teste',
     contributor_phone: '+5511999999999',
+    contributor_email: 'pessoa@example.com',
     amount: '50.00',
     payment_status: 'pending',
     payment_method: 'pix',
@@ -56,9 +71,10 @@ test('goal/open/fixed contributions are normalized without trusting browser mone
   assert.equal(insane.regional_division, 'ABC');
 });
 
-test('goal validation rejects amounts over remaining and goals already reached', () => {
+test('goal validation permits exceeding the remaining amount until the goal is reached', () => {
   assert.equal(preparePendingContribution({ ...request, amount: '2.275,00' }, goal, progress).amount, '2275.00');
-  assert.throws(() => preparePendingContribution({ ...request, amount: '2.275,01' }, goal, progress), errorCode('goal_remaining'));
+  assert.equal(preparePendingContribution({ ...request, amount: '2.275,01' }, goal, progress).amount, '2275.01');
+  assert.equal(preparePendingContribution({ ...request, amount: '200,00' }, { ...goal, target_amount: '1000.00' }, { remaining_amount: 100, goal_reached: false }).amount, '200.00');
   assert.throws(() => preparePendingContribution(request, goal, { remaining_amount: 0, goal_reached: true }), errorCode('goal_reached'));
   assert.throws(() => preparePendingContribution(request, goal, null), errorCode('progress_unavailable'));
 });
@@ -70,6 +86,7 @@ test('required fields, money, gift state and Insanos vest name are enforced', ()
   assert.throws(() => preparePendingContribution({ ...request, amount: Number.NaN }, open, null), errorCode('invalid_amount'));
   assert.throws(() => preparePendingContribution({ ...request, contributor_name: '   ' }, open, null), errorCode('invalid_name'));
   assert.throws(() => preparePendingContribution({ ...request, contributor_phone: '123' }, open, null), errorCode('invalid_phone'));
+  assert.throws(() => preparePendingContribution({ ...request, contributor_email: 'inválido' }, open, null), errorCode('invalid_email'));
   assert.throws(() => preparePendingContribution(request, null, null), errorCode('gift_unavailable'));
   assert.throws(() => preparePendingContribution(request, { ...goal, active: false }, progress), errorCode('gift_unavailable'));
   assert.throws(() => preparePendingContribution(request, fixed, null), errorCode('vest_name_required'));
@@ -85,9 +102,10 @@ test('submission refreshes state after a write race and returns only the pending
     ...emptyIdempotency,
     getGift: async () => goal,
     getProgress: async () => progress,
-    insert: async contribution => { inserted = contribution; },
+    insert: async contribution => { inserted = contribution; return stored(contribution); },
   });
-  assert.deepEqual(success, { ok: true, payment_status: 'pending' });
+  assert.equal(success.payment_status, 'pending');
+  assert.equal(success.contribution.id, '40000000-0000-4000-8000-000000000001');
   assert.equal(inserted.confirmed_at, null);
   assert.equal(inserted.payment_status, 'pending');
   assert.equal(inserted.external_reference, null);
@@ -100,7 +118,7 @@ test('submission refreshes state after a write race and returns only the pending
     getGift: async () => goal,
     getProgress: async () => (++progressReads === 1 ? { remaining_amount: 200, goal_reached: false } : { remaining_amount: 100, goal_reached: false }),
     insert: async () => { throw new Error('simulated database race'); },
-  }), errorCode('goal_remaining'));
+  }), errorCode('write_failed'));
 
   progressReads = 0;
   await assert.rejects(createPendingContributionWith(request, {
@@ -121,11 +139,12 @@ test('persistent idempotency reuses equal payloads and rejects key reuse with di
     getExisting: async () => existing,
     insert: async contribution => {
       inserts += 1;
-      existing = { request_fingerprint: contribution.request_fingerprint, payment_status: 'pending' };
+      existing = stored(contribution);
+      return existing;
     },
   };
-  assert.deepEqual(await createPendingContributionWith(request, dependencies), { ok: true, payment_status: 'pending' });
-  assert.deepEqual(await createPendingContributionWith(request, dependencies), { ok: true, payment_status: 'pending' });
+  assert.equal((await createPendingContributionWith(request, dependencies)).payment_status, 'pending');
+  assert.equal((await createPendingContributionWith(request, dependencies)).payment_status, 'pending');
   assert.equal(inserts, 1);
   await assert.rejects(createPendingContributionWith({ ...request, amount: '100,00' }, dependencies), errorCode('idempotency_conflict'));
 
@@ -135,18 +154,19 @@ test('persistent idempotency reuses equal payloads and rejects key reuse with di
   assert.equal(inserts, 2);
 });
 
-test('an expired retry returns the persisted attempt without exposing its key or fingerprint', async () => {
+test('an expired retry returns the persisted attempt for server-side orchestration', async () => {
   const prepared = preparePendingContribution(request, goal, progress);
+  const existing = stored(prepared, 'expired');
   const result = await createPendingContributionWith(request, {
     getGift: async () => goal,
     getProgress: async () => { throw new Error('progress must not be read for an existing retry'); },
     expirePending: async () => {},
-    getExisting: async () => ({ request_fingerprint: prepared.request_fingerprint, payment_status: 'expired' }),
+    getExisting: async () => existing,
     insert: async () => { throw new Error('insert must not run for an existing retry'); },
   });
-  assert.deepEqual(result, { ok: true, payment_status: 'expired' });
+  assert.equal(result.payment_status, 'expired');
+  assert.equal(result.contribution.id, existing.id);
   assert.ok(!JSON.stringify(result).includes(key));
-  assert.ok(!JSON.stringify(result).includes(prepared.request_fingerprint));
 });
 
 test('client contribution code never contains the service-role environment key', async () => {

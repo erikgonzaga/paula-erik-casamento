@@ -25,7 +25,10 @@ try {
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      body: JSON.stringify({ ok: true, payment_status: 'pending' }),
+      body: JSON.stringify({ ok: true, payment_status: 'pending', payment: {
+        status: 'waiting', qr_code: '000201-test-pix', qr_code_base64: null,
+        ticket_url: null, expires_at: new Date(Date.now() + 1800000).toISOString(),
+      } }),
     });
   });
 
@@ -46,6 +49,7 @@ try {
     await amountInput.fill('50,00');
     await dialog.getByLabel(/^Nome/).fill('Pessoa Teste');
     await dialog.getByLabel(/WhatsApp/).fill('(11) 99999-9999');
+    await dialog.getByLabel(/E-mail/).fill('pessoa@example.com');
     if (output) await dialog.screenshot({ path: `${output}/form-${width}.png` });
     const before = contributionRequests;
     await dialog.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit(); });

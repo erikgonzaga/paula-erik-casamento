@@ -92,11 +92,11 @@ Cards e modal regulares mostram meta e progresso para `goal`; `open` mostra conv
 
 O formulário gera um UUID v4 por tentativa e envia JSON para `POST /api/gift-contributions`. O Route Handler exige mesma origem, limita tamanho e frequência, valida campos e delega ao serviço servidor. O serviço relê `gifts` com `service_role`, calcula um fingerprint SHA-256 canônico e consulta a idempotência persistida antes de qualquer nova escrita. Para uma chave nova, relê o progresso atual de `goal` e insere `payment_status=pending`, `payment_method=pix`, `confirmed_at=null`, `external_reference=null` e expiração de 15 minutos. A resposta contém somente `{ok,payment_status}`; chave e fingerprint nunca retornam. A chave administrativa permanece em módulos `server-only`.
 
-Valores digitados são aceitos como texto pt-BR, convertidos para centavos inteiros e enviados ao PostgreSQL como decimal canônico; zero, negativos, valores inválidos e montantes acima do restante são rejeitados. Para `fixed`, qualquer valor do navegador é ignorado e `target_amount` relido do banco é a única fonte. Telefones brasileiros são armazenados como `+55` seguido de DDD e número. Insanos exigem `vest_name`.
+Valores digitados são aceitos como texto pt-BR, convertidos para centavos inteiros e enviados ao PostgreSQL como decimal canônico; zero, negativos e valores inválidos são rejeitados. Para `goal`, contribuições podem exceder o restante enquanto a meta confirmada ainda não foi atingida. Para `fixed`, qualquer valor do navegador é ignorado e `target_amount` relido do banco é a única fonte. Telefones brasileiros são armazenados como `+55` seguido de DDD e número. Insanos exigem `vest_name`.
 
-Retries com a mesma chave e fingerprint retornam a tentativa existente; a mesma chave com payload materialmente diferente recebe conflito. Antes de ler uma tentativa, o servidor chama a rotina protegida que persiste `pending` vencido como `expired`. Se o `INSERT` falhar, uma nova consulta também resolve a corrida de duas requisições idênticas. O trigger de metas continua sendo a proteção final. Somente `confirmed` entra na RPC; `pending` e `expired` não reservam nem aumentam saldo.
+Retries com a mesma chave e fingerprint retornam a tentativa existente; a mesma chave com payload materialmente diferente recebe conflito. Antes de ler uma tentativa, o servidor chama a rotina protegida que persiste `pending` vencido como `expired`, desde que não exista tentativa Pix. Se o `INSERT` falhar, uma nova consulta também resolve a corrida de duas requisições idênticas. O trigger de metas continua sendo a proteção final para iniciar contribuições; confirmações de Pix já emitidos podem ultrapassar a meta. Somente `confirmed` entra na RPC; `pending` e `expired` não aumentam saldo.
 
-`GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. Os botões de presentes continuam sem integração financeira. O símbolo da moto permanece como SVG local no componente da página.
+`GiftList` recebe os presentes regulares como propriedade e mantém os filtros client-side nesta ordem: Todos, Festa, Casa e Viagem. `party` vira Festa, `house` vira Casa e `travel` vira Viagem. Presentes com `gift_type=insanos` e `category=insanos` são renderizados exclusivamente na seção especial, fora dos filtros. O formulário está preparado para iniciar Pix pelo servidor com Mercado Pago Orders API. O navegador nunca recebe Access Token nem IDs internos: recebe apenas status e dados de apresentação do Pix. A confirmação depende da consulta autenticada ao provedor e da reconciliação privada. O símbolo da moto permanece como SVG local no componente da página.
 
 Os cards regulares preservam o recorte mobile `16:8`, fazem uma transição para `16:8.5` em tablet e usam `16:9` no desktop. O modal regular usa a imagem no topo: mantém o comportamento mobile até 900 px e, no desktop, apresenta um hero de 300 px com a arte inteira em `contain`, seguido por informações e formulário em duas colunas. A abertura bloqueia o `body`, leva o foco ao botão fechar, contém a navegação por Tab e restaura o foco ao CTA ao fechar.
 
@@ -147,7 +147,10 @@ Nunca edite migrations já aplicadas. O estado versionado é construído nesta o
 5. `202609150001_gifts_party_category.sql` — substitui a categoria regular `clothing` por `party`, preservando `insanos` como categoria exclusiva dos presentes especiais.
 6. `202609170001_gift_funding.sql` — renomeia `price` para `target_amount`, adiciona modalidades, contribuições privadas, validação transacional e RPC agregada.
 7. `202609170002_gift_contribution_idempotency_expiry.sql` — aplicada em produção conforme informado pelo casal; adiciona UUID de idempotência, fingerprint privado, expiração em 15 minutos, status `expired` e rotina protegida de expiração.
-8. `202609170003_fix_gift_contribution_expiry.sql` — ainda não aplicada remotamente; corrige a rotina protegida para aceitar o UUID privado da contribuição ou sua chave de idempotência, preservando filtros de status e prazo.
+8. `202609170003_fix_gift_contribution_expiry.sql` — registrada no histórico remoto; corrige a rotina protegida para aceitar o UUID privado da contribuição ou sua chave de idempotência.
+9. `202609200001_admin_foundation.sql` — objetos confirmados no schema remoto após execução manual; versão ausente do histórico de migrations.
+10. `202609220001_mercado_pago_pix_orders.sql` — objetos confirmados no schema remoto após execução manual; versão ausente do histórico de migrations. Adiciona e-mail do contribuinte, tentativas Pix privadas, eventos de webhook, reserva e reconciliação.
+11. `202609220002_fix_mercado_pago_external_reference.sql` — formato com hífen confirmado na RPC remota após execução manual; versão ausente do histórico de migrations. Corrige referências legadas elegíveis e passa a gerar `gift-contribution-<UUID>`.
 
 Tabelas:
 
@@ -159,7 +162,9 @@ Tabelas:
 | `event_private_details` | Local e orientações privadas. |
 | `invitation_rate_limits` | Baldes de limitação de tentativas. |
 | `gifts` | Catálogo de presentes regulares e Insanos, sem dados de contribuição ou pagamento. |
-| `gift_contributions` | Contribuições individuais privadas, status e dados de agradecimento; sem integração financeira implementada. |
+| `gift_contributions` | Contribuições individuais privadas, contato, status e dados de agradecimento. |
+| `payment_attempts` | Tentativas privadas do provedor, idempotência, reserva, status reconciliado e dados Pix. |
+| `payment_webhook_events` | Deduplicação e resultado do processamento de notificações assinadas. |
 
 Todas usam RLS. As tabelas de convites permanecem com acesso público totalmente negado e são acessadas com `service_role` apenas em módulos `server-only`; `save_invitation_rsvp` valida o grupo e todos os IDs antes de qualquer update. Em `gifts`, `anon` e `authenticated` recebem somente `SELECT`, e a policy permite enxergar apenas registros ativos. Escritas continuam exclusivas da `service_role` no servidor.
 
@@ -175,6 +180,7 @@ Consulte apenas os nomes em `.env.example`:
 - segredo de sessão;
 - origem da aplicação;
 - chave temporária para logs seguros de diagnóstico.
+- credenciais servidor do Mercado Pago, segredo do webhook, IDs esperados da conta e `PAYMENTS_ENVIRONMENT`.
 
 Os valores não pertencem ao Git ou à documentação. `.env.local` está ignorado.
 
@@ -182,7 +188,7 @@ Os valores não pertencem ao Git ou à documentação. `.env.local` está ignora
 
 `npm test` executa `tests/rsvp.test.mjs` e `tests/gifts.test.mjs` com migrations reais em PGlite. Além do RSVP, cobre constraints do catálogo, leitura pública somente de presentes ativos e bloqueio de `INSERT`, `UPDATE` e `DELETE` para `anon` e `authenticated`.
 
-Também executa `tests/gift-progress.test.mjs`: associação por ID, 0/parcial/100%, limites visuais, linha de progresso ausente, indisponibilidade, formatação pt-BR e exclusão dos totais open/fixed das props. `tests/gift-contribution.test.mjs` cobre validação, normalização, `goal/open/fixed`, Insanos, concorrência, retries e conflito de idempotência. `tests/gifts.test.mjs` aplica a migration nova em memória e verifica unicidade, 15 minutos, transição para `expired`, RLS e progresso apenas confirmado. O teste opcional de navegador `tests/presentes-titles.mjs` cobre os estados de progresso com HTTP local em memória. `tests/gift-contribution-browser.mjs` intercepta todo POST e valida UUIDs novos por tentativa, bloqueio de duplo envio e Insanos em 375, 390, 430, 768, 1024, 1280 e 1440 px, sem escrever no Supabase.
+Também executa `tests/gift-progress.test.mjs`: associação por ID, 0/parcial/100%, limites visuais, linha de progresso ausente, indisponibilidade, formatação pt-BR e exclusão dos totais open/fixed das props. `tests/gift-contribution.test.mjs` cobre validação, normalização, `goal/open/fixed`, Insanos, concorrência, retries e conflito de idempotência. `tests/gifts.test.mjs` aplica as migrations em memória e verifica RLS, reserva privada, reconciliação única e progresso apenas confirmado. `tests/mercado-pago.test.mjs` usa rede simulada e verifica autenticação servidor, idempotência estável, payload Pix TEST e rejeição de respostas divergentes. O teste opcional de navegador `tests/presentes-titles.mjs` cobre os estados de progresso com HTTP local em memória. `tests/gift-contribution-browser.mjs` intercepta o POST e valida o fluxo visual sem escrever no Supabase ou chamar o Mercado Pago.
 
 O teste HTTP requer três processos:
 

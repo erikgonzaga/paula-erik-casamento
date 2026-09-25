@@ -46,10 +46,10 @@ export function combineGiftProgress(gifts: Gift[], rows: unknown): Gift[] {
             raised !== null && raised >= 0 && percentage !== null &&
             remaining !== null && remaining >= 0 && typeof row.goal_reached === 'boolean') {
           const visualPercentage = clampPercentage(percentage);
-          const goalReached = row.goal_reached || visualPercentage >= 100;
+          const goalReached = row.goal_reached;
           progress = {
             target_amount: target, total_raised: raised,
-            percentage: goalReached ? 100 : visualPercentage,
+            percentage: goalReached ? 100 : Math.min(99.99, visualPercentage),
             remaining_amount: remaining, goal_reached: goalReached,
           };
         }

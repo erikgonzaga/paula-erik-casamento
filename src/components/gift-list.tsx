@@ -46,7 +46,7 @@ function usesTransparentMedia(gift: RegularGift) {
 
 function goalReached(gift: RegularGift) {
   return gift.funding_mode === 'goal' && !!gift.progress &&
-    (gift.progress.goal_reached || clampPercentage(gift.progress.percentage) >= 100);
+    gift.progress.goal_reached;
 }
 
 function GiftFunding({ gift }: { gift: RegularGift }) {

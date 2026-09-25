@@ -24,10 +24,12 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 - As migrations `202609140001_gifts_catalog.sql`, `202609150001_gifts_party_category.sql` e `202609170001_gift_funding.sql` foram informadas pelo casal como aplicadas em produção. São históricas e não devem ser editadas.
 - Catálogo de 38 registros já cadastrado no Supabase, conforme informado pelo casal; não executar novamente nem usar seed fictício nesta etapa. Progresso real implementado via RPC agregada, com meta alcançada e texto de Gramado no filtro Viagem.
 - Imagens definitivas dos 35 presentes regulares recebidas e associadas por slug. Manter a validação visual dos cards e modais em 375, 390, 430, 768, 1024, 1280 e 1440 px. Ver `CATALOGO-DEFINITIVO.md`.
-- Definir PIX real, recebedor, confirmação e eventual link externo parcelado. Nenhum dado financeiro deve ser inventado ou commitado.
-- Formulários regulares e Insanos já criam contribuições privadas `pending`; revisar textos finais e testar o endpoint em um projeto Supabase de desenvolvimento antes de integrar pagamento.
-- A migration `202609170002_gift_contribution_idempotency_expiry.sql` foi aplicada em produção conforme informado pelo casal. A correção `202609170003_fix_gift_contribution_expiry.sql` está somente no repositório: revisar backup, aplicar manualmente e validar com o registro vencido preservado antes de qualquer deploy.
-- A proteção transacional de metas, idempotência e expiração está preparada. Antes de pagamentos reais: testar concorrência com conexões PostgreSQL independentes, definir conciliação C6, estorno e confirmação bancária tardia ou acima do saldo. Pending continua sem reserva. Ver `PRESENTES-CONTRIBUICOES.md`.
+- A integração Pix Mercado Pago via Orders API está em teste local. O casal confirmou no schema remoto os objetos das migrations `202609220001` e `202609220002`, executadas manualmente e ainda ausentes do histórico de migrations. Não reexecutá-las nesta etapa. A criação de Order Pix TEST funcionou; notificações automáticas e o simulador retornam `SignatureMismatch`/401 no webhook. Investigar sem enfraquecer a assinatura antes da homologação.
+- Configurar por canal seguro `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_USER_ID` e manter `PAYMENTS_ENVIRONMENT=test` durante a homologação. Nunca commitar valores.
+- Cadastrar no Mercado Pago a URL HTTPS `/api/payments/mercado-pago/webhook`, selecionar eventos de Orders e validar assinatura, aprovação, expiração, retry e conciliação no ambiente de teste.
+- Antes da produção, testar concorrência real para metas e presentes únicos, confirmar a conta recebedora, revisar logs/alertas e definir estorno, chargeback, pagamento tardio e indisponibilidade do provedor. A troca para `PAYMENTS_ENVIRONMENT=production` exige decisão explícita do casal.
+- O histórico remoto de migrations foi confirmado pelo casal até `202609170003_fix_gift_contribution_expiry.sql`; as versões posteriores foram executadas manualmente e ainda exigem reconciliação de histórico em etapa separada.
+- A migration de pagamentos permite que Pix emitidos antes de a meta ser atingida sejam confirmados integralmente, mesmo acima dela; somente `confirmed` entra no progresso público. A reserva privada permanece para presentes únicos. Ver `PRESENTES-CONTRIBUICOES.md`.
 - Avaliar otimização das imagens das moedas: os arquivos ativos são grandes e usam `unoptimized`. Preservar qualidade, transparência e aparência ao otimizar.
 - Remover versões antigas e duplicadas de moedas em `public/images/presentes` depois de confirmar que nenhuma referência externa depende delas.
 - Finalizar a validação visual do background Insanos em 390, 430, 768, 820, 1024, 1180, 1280 e 1440 px. A regra intermediária foi ajustada para `cover`, posição `58% center`, overlay gradual e margens menores, mas a rodada completa de capturas exatas ainda deve ser concluída.
@@ -35,8 +37,8 @@ Este arquivo registra trabalho aberto sem autorizar automaticamente novas fases.
 
 ## Administração e conteúdo futuro
 
-- Fundação administrativa implementada localmente: Supabase Auth, autorização explícita, sessões revogáveis e dashboard somente leitura. Ver [Administração](ADMINISTRACAO.md).
-- Aplicar manualmente a nova migration `202609200001_admin_foundation.sql`, configurar Auth e criar/vincular o primeiro administrador conforme o guia. Nada foi executado remotamente.
+- Fundação administrativa implementada: Supabase Auth, autorização explícita, sessões revogáveis e dashboard somente leitura. Os objetos de `202609200001_admin_foundation.sql` foram confirmados no schema remoto após execução manual; a versão ainda não consta no histórico de migrations. Ver [Administração](ADMINISTRACAO.md).
+- Configurar Auth e criar/vincular o primeiro administrador conforme o guia, se ainda pendente.
 - Validar Auth real em Supabase de desenvolvimento antes de publicar. O teste local usa Auth sintético e SQL real em memória.
 - CRUD, recuperação de senha, MFA e demais áreas administrativas ficam para uma fase futura autorizada. `anon` e `authenticated` continuam sem acesso às tabelas privadas.
 - Decidir se fotos, textos e pessoas especiais serão gerenciáveis pelo painel ou continuarão versionados.

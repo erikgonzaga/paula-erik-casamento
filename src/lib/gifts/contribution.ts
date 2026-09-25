@@ -17,6 +17,7 @@ export type PendingContribution = {
   gift_id: string;
   contributor_name: string;
   contributor_phone: string;
+  contributor_email: string;
   amount: string;
   payment_status: 'pending';
   payment_method: 'pix';
@@ -30,8 +31,14 @@ export type PendingContribution = {
 type PendingContributionBase = Omit<PendingContribution, 'request_fingerprint'>;
 
 export type ExistingContribution = {
+  id: string;
+  gift_id: string;
+  contributor_name: string;
   request_fingerprint: string;
   payment_status: 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
+  amount: string;
+  contributor_email: string;
+  expires_at: string;
 };
 
 type NormalizedRequest = Omit<PendingContribution, 'request_fingerprint' | 'amount' | 'payment_status' | 'payment_method' |
@@ -50,7 +57,7 @@ export class GiftContributionError extends Error {
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const allowedKeys = new Set([
-  'idempotency_key', 'gift_id', 'amount', 'contributor_name', 'contributor_phone', 'message', 'vest_name', 'regional_division',
+  'idempotency_key', 'gift_id', 'amount', 'contributor_name', 'contributor_phone', 'contributor_email', 'message', 'vest_name', 'regional_division',
 ]);
 const zeroCents = BigInt(0);
 const hundredCents = BigInt(100);
@@ -116,11 +123,6 @@ function centsToDatabase(cents: bigint): string {
   return `${cents / hundredCents}.${String(cents % hundredCents).padStart(2, '0')}`;
 }
 
-export function formatContributionCents(cents: bigint): string {
-  const whole = (cents / hundredCents).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `R$ ${whole},${String(cents % hundredCents).padStart(2, '0')}`;
-}
-
 function validateRequest(value: unknown): NormalizedRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new GiftContributionError(400, 'invalid_form', 'Confira os dados da contribuição.');
@@ -134,12 +136,20 @@ function validateRequest(value: unknown): NormalizedRequest {
   if (typeof input.contributor_name !== 'string' || !input.contributor_name.trim() || input.contributor_name.trim().length > 150) {
     throw new GiftContributionError(400, 'invalid_name', 'Informe seu nome.');
   }
+  if (typeof input.contributor_email !== 'string') {
+    throw new GiftContributionError(400, 'invalid_email', 'Informe um e-mail válido.');
+  }
+  const email = input.contributor_email.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new GiftContributionError(400, 'invalid_email', 'Informe um e-mail válido.');
+  }
   return {
     idempotency_key: input.idempotency_key,
     gift_id: input.gift_id,
     amount: input.amount,
     contributor_name: input.contributor_name.trim(),
     contributor_phone: normalizeBrazilianPhone(input.contributor_phone),
+    contributor_email: email,
     message: optionalText(input.message, 2000, 'mensagem'),
     vest_name: optionalText(input.vest_name, 150, 'nome de colete'),
     regional_division: optionalText(input.regional_division, 150, 'regional ou divisão'),
@@ -176,6 +186,7 @@ function materializeContribution(
     gift_id: gift.id,
     contributor_name: request.contributor_name,
     contributor_phone: request.contributor_phone,
+    contributor_email: request.contributor_email,
     amount: centsToDatabase(amount),
     payment_status: 'pending',
     payment_method: 'pix',
@@ -194,6 +205,7 @@ function fingerprintContribution(contribution: PendingContributionBase): string 
     contribution.amount,
     contribution.contributor_name,
     contribution.contributor_phone,
+    contribution.contributor_email,
     contribution.message,
     contribution.vest_name,
     contribution.regional_division,
@@ -207,7 +219,6 @@ function withFingerprint(contribution: PendingContributionBase): PendingContribu
 }
 
 function validateContributionAvailability(
-  contribution: PendingContribution,
   gift: ContributionGiftSnapshot,
   progress: ContributionProgressSnapshot | null,
 ) {
@@ -222,13 +233,6 @@ function validateContributionAvailability(
   if (progress.goal_reached || remaining <= zeroCents) {
     throw new GiftContributionError(409, 'goal_reached', 'Esse presente acabou de atingir a meta ❤️');
   }
-  const amount = storedMoneyToCents(contribution.amount);
-  if (amount === null) {
-    throw new GiftContributionError(503, 'invalid_gift', 'Não foi possível validar este presente agora.');
-  }
-  if (amount > remaining) {
-    throw new GiftContributionError(409, 'goal_remaining', `Esse presente está quase completo. Agora restam ${formatContributionCents(remaining)}.`);
-  }
 }
 
 export function preparePendingContribution(
@@ -238,7 +242,7 @@ export function preparePendingContribution(
 ): PendingContribution {
   const request = validateRequest(value);
   const contribution = withFingerprint(materializeContribution(request, gift));
-  validateContributionAvailability(contribution, gift!, progress);
+  validateContributionAvailability(gift!, progress);
   return contribution;
 }
 
@@ -247,14 +251,14 @@ export type ContributionDependencies = {
   getProgress(id: string): Promise<ContributionProgressSnapshot | null>;
   expirePending(idempotencyKey: string): Promise<void>;
   getExisting(idempotencyKey: string): Promise<ExistingContribution | null>;
-  insert(contribution: PendingContribution): Promise<void>;
+  insert(contribution: PendingContribution): Promise<ExistingContribution>;
 };
 
 function existingResult(existing: ExistingContribution, fingerprint: string) {
   if (existing.request_fingerprint !== fingerprint) {
     throw new GiftContributionError(409, 'idempotency_conflict', 'Esta tentativa já foi utilizada com outros dados. Inicie uma nova contribuição.');
   }
-  return { ok: true as const, payment_status: existing.payment_status };
+  return { ok: true as const, payment_status: existing.payment_status, contribution: existing };
 }
 
 export async function createPendingContributionWith(value: unknown, dependencies: ContributionDependencies) {
@@ -266,9 +270,10 @@ export async function createPendingContributionWith(value: unknown, dependencies
   if (existing) return existingResult(existing, contribution.request_fingerprint);
 
   const progress = gift!.funding_mode === 'goal' ? await dependencies.getProgress(request.gift_id) : null;
-  validateContributionAvailability(contribution, gift!, progress);
+  validateContributionAvailability(gift!, progress);
   try {
-    await dependencies.insert(contribution);
+    const inserted = await dependencies.insert(contribution);
+    return existingResult(inserted, contribution.request_fingerprint);
   } catch {
     // A concurrent request may have inserted this same key first.
     await dependencies.expirePending(request.idempotency_key);
@@ -281,10 +286,9 @@ export async function createPendingContributionWith(value: unknown, dependencies
     const currentProgress = currentGift?.funding_mode === 'goal'
       ? await dependencies.getProgress(request.gift_id)
       : null;
-    const currentContribution = withFingerprint(materializeContribution(request, currentGift));
-    validateContributionAvailability(currentContribution, currentGift!, currentProgress);
+    materializeContribution(request, currentGift);
+    validateContributionAvailability(currentGift!, currentProgress);
     throw new GiftContributionError(503, 'write_failed', 'Não foi possível registrar a contribuição agora. Tente novamente.');
   }
-  return { ok: true as const, payment_status: 'pending' as const };
 }
 import { createHash } from 'node:crypto';

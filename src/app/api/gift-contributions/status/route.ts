@@ -1,7 +1,7 @@
 import { GiftContributionError } from '@/lib/gifts/contribution';
 import { assertSameOrigin, limit, readBody } from '@/lib/invitations/http';
 import { InvitationError } from '@/lib/invitations/validation';
-import { createGiftPayment } from '@/services/gift-payments';
+import { getGiftPaymentStatus } from '@/services/gift-payments';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,12 +20,12 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     const body = await readBody(request);
-    await limit(request, 'gift-contribution', 10);
-    return json(await createGiftPayment(body), 201);
+    await limit(request, 'gift-payment-status', 150);
+    return json(await getGiftPaymentStatus(body));
   } catch (error) {
     if (error instanceof GiftContributionError || error instanceof InvitationError) {
       return json({ message: error.message }, error.status);
     }
-    return json({ message: 'Não foi possível registrar a contribuição agora. Tente novamente em alguns instantes.' }, 503);
+    return json({ message: 'Não foi possível consultar o pagamento agora.' }, 503);
   }
 }

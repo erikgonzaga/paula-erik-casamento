@@ -7,7 +7,7 @@ import {
   type ExistingContribution,
   type PendingContribution,
 } from '@/lib/gifts/contribution';
-import { database, databaseCommand } from '@/lib/supabase/server';
+import { database, databaseInsert } from '@/lib/supabase/server';
 
 const giftSelection = 'id,active,funding_mode,target_amount,gift_type';
 
@@ -26,7 +26,12 @@ async function getProgress(id: string): Promise<ContributionProgressSnapshot | n
 }
 
 async function insert(contribution: PendingContribution) {
-  await databaseCommand('gift_contributions', contribution);
+  const rows = await databaseInsert<ExistingContribution[]>(
+    'gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,amount,contributor_email,expires_at',
+    contribution,
+  );
+  if (!Array.isArray(rows) || rows.length !== 1) throw new Error('contribution_insert_failed');
+  return rows[0];
 }
 
 async function expirePending(idempotencyKey: string) {
@@ -35,7 +40,7 @@ async function expirePending(idempotencyKey: string) {
 
 async function getExisting(idempotencyKey: string): Promise<ExistingContribution | null> {
   const rows = await database<ExistingContribution[]>(
-    `gift_contributions?select=request_fingerprint,payment_status&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
+    `gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,amount,contributor_email,expires_at&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
   );
   return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
 }
