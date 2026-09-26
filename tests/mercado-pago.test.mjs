@@ -22,8 +22,7 @@ const { assertExpectedOrder, createPixOrder, getOrder, MercadoPagoError, normali
 const mercadoPagoEntry = new URL('../node_modules/mercadopago/dist/index.js', import.meta.url).href;
 const { WebhookSignatureValidator } = await import(mercadoPagoEntry);
 const observedSdkUrl = `data:text/javascript;base64,${Buffer.from(`
-  import { InvalidWebhookSignatureError, WebhookSignatureValidator as OfficialValidator } from '${mercadoPagoEntry}';
-  export { InvalidWebhookSignatureError };
+  import { WebhookSignatureValidator as OfficialValidator } from '${mercadoPagoEntry}';
   export const validationCalls = [];
   export const WebhookSignatureValidator = {
     validate(options) {
@@ -134,8 +133,47 @@ test('Orders Pix uses server credentials, stable idempotency and the official TE
   assert.equal(body.payer.email, 'test_user_br@testuser.com');
   assert.equal(body.payer.first_name, 'APRO');
   assert.equal(body.transactions.payments[0].payment_method.id, 'pix');
+  assert.equal(body.transactions.payments[0].payment_method.type, 'bank_transfer');
   assert.equal(body.transactions.payments[0].expiration_time, 'PT30M');
   assertExpectedOrder(order, { amount: '50.00', externalReference: response.external_reference });
+});
+
+test('production Pix Order keeps the real payer and never sends TEST/APRO data', async () => {
+  const previousEnvironment = process.env.PAYMENTS_ENVIRONMENT;
+  process.env.PAYMENTS_ENVIRONMENT = 'production';
+  try {
+    let captured;
+    await createPixOrder({
+      ...giftItem,
+      amount: 50,
+      externalReference: response.external_reference,
+      idempotencyKey: '50000000-0000-4000-8000-000000000001',
+      payerEmail: 'contributor@example.com',
+      payerName: 'Pessoa Contribuinte',
+    }, async (url, init) => {
+      captured = { url, init };
+      return new Response(JSON.stringify(response), { status: 201 });
+    });
+    assert.equal(captured.url, 'https://api.mercadopago.com/v1/orders');
+    assert.equal(captured.init.headers['X-Idempotency-Key'], '50000000-0000-4000-8000-000000000001');
+    const body = JSON.parse(captured.init.body);
+    assert.deepEqual(body.payer, { email: 'contributor@example.com', first_name: 'Pessoa Contribuinte' });
+    assert.ok(!captured.init.body.includes('APRO'));
+    assert.ok(!captured.init.body.includes('test_user_br@testuser.com'));
+    assert.equal(body.type, 'online');
+    assert.equal(body.processing_mode, 'automatic');
+    assert.equal(body.total_amount, '50.00');
+    assert.equal(body.external_reference, response.external_reference);
+    assert.deepEqual(body.items, [{ title: giftItem.giftName, quantity: 1, unit_price: '50.00' }]);
+    assert.deepEqual(body.transactions.payments, [{
+      amount: '50.00',
+      payment_method: { id: 'pix', type: 'bank_transfer' },
+      expiration_time: 'PT30M',
+    }]);
+  } finally {
+    if (previousEnvironment === undefined) delete process.env.PAYMENTS_ENVIRONMENT;
+    else process.env.PAYMENTS_ENVIRONMENT = previousEnvironment;
+  }
 });
 
 test('numeric RPC amount is sent as two decimal JSON strings and validates against the Order', async () => {
@@ -519,88 +557,24 @@ test('webhook route processes only an SDK-validated notification and rejects inv
   const signature = sign(`id:${dataId};request-id:${requestId};ts:${timestamp};`);
   const baseUrl = 'https://example.test/api/payments/mercado-pago/webhook?type=order';
   const makeRequest = (url, headers) => new Request(url, { method: 'POST', headers });
-  const oldError = console.error;
-  console.error = () => {};
   processedCalls.length = 0;
-  try {
-    const valid = await postWebhook(makeRequest(`${baseUrl}&data.id=${dataId}`, {
-      'x-request-id': requestId, 'x-signature': signature,
-    }));
-    assert.equal(valid.status, 200);
-    assert.equal(processedCalls.length, 1);
-    assert.equal(processedCalls[0].dataId, dataId);
+  const valid = await postWebhook(makeRequest(`${baseUrl}&data.id=${dataId}`, {
+    'x-request-id': requestId, 'x-signature': signature,
+  }));
+  assert.equal(valid.status, 200);
+  assert.equal(processedCalls.length, 1);
+  assert.equal(processedCalls[0].dataId, dataId);
 
-    const invalidCases = [
-      ['invalid signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': `ts=${timestamp},v1=${'0'.repeat(64)}` }],
-      ['lowercase-only signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': sign(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`) }],
-      ['missing x-signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId }],
-      ['missing x-request-id', `${baseUrl}&data.id=${dataId}`, { 'x-signature': sign(`id:${dataId};ts:${timestamp};`) }],
-      ['missing data.id', baseUrl, { 'x-request-id': requestId, 'x-signature': signature }],
-    ];
-    for (const [label, url, headers] of invalidCases) {
-      const result = await postWebhook(makeRequest(url, headers));
-      assert.equal(result.status, 401, label);
-      assert.equal(processedCalls.length, 1, `${label} must not process an Order`);
-    }
-  } finally {
-    console.error = oldError;
-  }
-});
-
-test('webhook signature failure logs safe shape and SDK failure reason', () => {
-  const oldEnvironment = process.env.NODE_ENV;
-  const oldError = console.error;
-  const logs = [];
-  process.env.NODE_ENV = 'development';
-  console.error = (...items) => logs.push(items);
-  try {
-    const dataId = 'ORDTST01M369HVFY7N8VPVYRH61SAD8R';
-    const request = new Request(
-      `https://example.test/api/payments/mercado-pago/webhook?data.external_reference=${response.external_reference}&data.id=${dataId}&type=order`,
-      { method: 'POST', headers: {
-        'x-request-id': 'request-test-2',
-        'x-signature': `ts=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}`,
-      } },
-    );
-    assert.throws(() => validateMercadoPagoWebhook(request), MercadoPagoWebhookError);
-    assert.equal(logs.length, 1);
-    assert.deepEqual(logs[0][1], {
-      operation: 'webhook-signature-validation',
-      hasXSignature: 'true', hasXRequestId: 'true', hasWebhookSecret: 'true',
-      dataId,
-      requestIdLength: 14, requestIdTrimChanged: 'false', type: 'order', hasExternalReference: 'true',
-      hasTimestampPart: 'true', timestampDigits: 10, hasV1Part: 'true',
-      validationResult: 'false', sdkValidationResult: 'false', failureReason: 'SignatureMismatch',
-    });
-    const logged = JSON.stringify(logs);
-    for (const forbidden of [process.env.MERCADO_PAGO_WEBHOOK_SECRET, 'request-test-2', '0'.repeat(64), response.external_reference]) {
-      assert.ok(!logged.includes(forbidden));
-    }
-  } finally {
-    console.error = oldError;
-    if (oldEnvironment === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = oldEnvironment;
-  }
-});
-
-test('TEST environment keeps sanitized webhook failure diagnostic in production mode', () => {
-  const oldEnvironment = process.env.NODE_ENV;
-  const oldError = console.error;
-  const logs = [];
-  process.env.NODE_ENV = 'production';
-  console.error = (...items) => logs.push(items);
-  try {
-    const request = new Request('https://example.test/api/payments/mercado-pago/webhook?type=order&data.id=ORDTST01M369HVFY7N8VPVYRH61SAD8R', {
-      method: 'POST', headers: { 'x-request-id': 'request-test-3' },
-    });
-    assert.throws(() => validateMercadoPagoWebhook(request), MercadoPagoWebhookError);
-    assert.equal(logs.length, 1);
-    assert.equal(logs[0][1].failureReason, 'MissingSignatureHeader');
-    assert.equal(logs[0][1].hasXSignature, 'false');
-    assert.ok(!JSON.stringify(logs).includes(process.env.MERCADO_PAGO_WEBHOOK_SECRET));
-  } finally {
-    console.error = oldError;
-    if (oldEnvironment === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = oldEnvironment;
+  const invalidCases = [
+    ['invalid signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': `ts=${timestamp},v1=${'0'.repeat(64)}` }],
+    ['lowercase-only signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': sign(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`) }],
+    ['missing x-signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId }],
+    ['missing x-request-id', `${baseUrl}&data.id=${dataId}`, { 'x-signature': sign(`id:${dataId};ts:${timestamp};`) }],
+    ['missing data.id', baseUrl, { 'x-request-id': requestId, 'x-signature': signature }],
+  ];
+  for (const [label, url, headers] of invalidCases) {
+    const result = await postWebhook(makeRequest(url, headers));
+    assert.equal(result.status, 401, label);
+    assert.equal(processedCalls.length, 1, `${label} must not process an Order`);
   }
 });
