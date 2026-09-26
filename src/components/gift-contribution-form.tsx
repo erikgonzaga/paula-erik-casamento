@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { formatGoalAmount } from '@/lib/gifts/format';
 import type { Gift } from '@/lib/gifts/types';
 import styles from './gift-contribution-form.module.css';
@@ -35,6 +36,7 @@ type PaymentResult = {
 };
 
 export function GiftContributionForm({ gift }: { gift: Gift }) {
+  const router = useRouter();
   const [amount, setAmount] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -47,8 +49,15 @@ export function GiftContributionForm({ gift }: { gift: Gift }) {
   const [payment, setPayment] = useState<PaymentResult | null>(null);
   const [copied, setCopied] = useState(false);
   const inFlight = useRef(false);
+  const refreshedAfterConfirmation = useRef(false);
   const idempotencyKey = useRef<string | null>(null);
   const isInsane = gift.gift_type === 'insanos';
+
+  useEffect(() => {
+    if (payment?.payment_status !== 'confirmed' || refreshedAfterConfirmation.current) return;
+    refreshedAfterConfirmation.current = true;
+    router.refresh();
+  }, [payment?.payment_status, router]);
 
   useEffect(() => {
     if (!payment || payment.payment_status !== 'pending' || !idempotencyKey.current) return;

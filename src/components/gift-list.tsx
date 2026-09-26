@@ -97,6 +97,7 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
   const closeButtonRef=useRef<HTMLButtonElement|null>(null);
   const triggerRef=useRef<HTMLElement|null>(null);
   const visible=category==='all'?gifts:gifts.filter(gift=>gift.category===category);
+  const currentSelected=selected?(gifts.find(gift=>gift.id===selected.id)??selected):null;
   useEffect(()=>{
     if(!selected)return;
     const previousOverflow=document.body.style.overflow;
@@ -134,15 +135,15 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
     </section>}
     <p className={styles.resultCount} aria-live="polite">{visible.length} {visible.length===1?'presente encontrado':'presentes encontrados'}</p>
     <section className={styles.grid} aria-label="Presentes disponíveis">{visible.map(gift=><GiftCard key={gift.id} gift={gift} onSelect={open} />)}</section>
-    {selected&&<div className={styles.backdrop} role="presentation" onMouseDown={close}><section ref={dialogRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" aria-describedby="gift-detail-description" onMouseDown={event=>event.stopPropagation()}>
+    {currentSelected&&<div className={styles.backdrop} role="presentation" onMouseDown={close}><section ref={dialogRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="gift-detail-title" aria-describedby="gift-detail-description" onMouseDown={event=>event.stopPropagation()}>
       <button ref={closeButtonRef} className={styles.close} type="button" aria-label="Fechar detalhes do presente" onClick={close}>×</button>
-      <div className={`${styles.modalImage} ${usesTransparentMedia(selected)?styles.transparentMediaBackground:''}`}><div className={styles.modalImageArt}>{selected.image_url&&<Image className={`${styles.modalImageAsset} ${usesTransparentMedia(selected)?styles.transparentModalImage:''}`} src={selected.image_url} alt={selected.name} fill sizes="(max-width: 640px) 88vw, (max-width: 900px) 500px, 534px" style={{objectPosition:imagePosition(selected)}} />}</div></div>
+      <div className={`${styles.modalImage} ${usesTransparentMedia(currentSelected)?styles.transparentMediaBackground:''}`}><div className={styles.modalImageArt}>{currentSelected.image_url&&<Image className={`${styles.modalImageAsset} ${usesTransparentMedia(currentSelected)?styles.transparentModalImage:''}`} src={currentSelected.image_url} alt={currentSelected.name} fill sizes="(max-width: 640px) 88vw, (max-width: 900px) 500px, 534px" style={{objectPosition:imagePosition(currentSelected)}} />}</div></div>
       <div className={styles.modalBody}>
-        <p className={styles.category}>{categoryLabels[selected.category]}</p>
-        <h2 id="gift-detail-title">{selected.name}</h2>
-        <div className={styles.modalFunding}><GiftFunding gift={selected} /></div>
-        <p id="gift-detail-description" className={styles.description}>{selected.description??''}</p>
-        <div className={styles.modalForm}><GiftContributionForm gift={selected} /></div>
+        <p className={styles.category}>{categoryLabels[currentSelected.category]}</p>
+        <h2 id="gift-detail-title">{currentSelected.name}</h2>
+        <div className={styles.modalFunding}><GiftFunding gift={currentSelected} /></div>
+        <p id="gift-detail-description" className={styles.description}>{currentSelected.description??''}</p>
+        <div className={styles.modalForm}><GiftContributionForm gift={currentSelected} /></div>
       </div>
     </section></div>}
   </>;
