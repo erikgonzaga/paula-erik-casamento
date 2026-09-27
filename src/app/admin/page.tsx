@@ -42,10 +42,11 @@ export default async function AdminPage() {
       <p className={styles.note}>Somente presentes ativos do tipo meta. Boletos e valores fixos não compõem a meta ou seu progresso.</p>
     </section>
     <section className={styles.section} aria-labelledby="contributions"><h2 id="contributions">Contribuições</h2>
-      <p>Histórico completo, incluindo presentes inativos. Apenas contribuições confirmadas entram nos valores.</p>
+      <p>Histórico completo, incluindo presentes inativos. Valores financeiros consideram apenas confirmações reais/legadas; TEST fica separado.</p>
       <Stats items={Object.entries(statuses).map(([key,label]): [string,number] => [label,c[key as keyof typeof c]])} />
       <Stats items={[[ 'Confirmado total',money(c.total)],['Em metas coletivas',money(c.goal)],['Valor livre / boletos',money(c.open)],['Valor fixo',money(c.fixed)],['Presentes Insanos',money(c.insanos)]]} />
-      <p className={styles.note}>Insanos é um recorte do total de valor fixo; não some os dois. Status exibidos conforme o banco, sem expirar ou alterar contribuições nesta tela.</p>
+      <Stats items={[[ 'Tentativas TEST',c.test],['TEST aprovadas',c.test_confirmed],['Valor simulado TEST',money(c.test_total)]]} />
+      <p className={styles.note}>TEST é auditoria de integração e não entra em metas nem em valores recebidos. Insanos é um recorte do total de valor fixo; não some os dois.</p>
     </section>
     <section className={styles.section} aria-labelledby="goals"><h2 id="goals">Metas dos presentes</h2>
       {data.goals.length === 0 ? <p>Nenhuma meta coletiva ativa.</p> : <div className={styles.tableWrap}><table className={styles.table}>
@@ -55,8 +56,8 @@ export default async function AdminPage() {
     </section>
     <section className={styles.section} aria-labelledby="recent"><h2 id="recent">Contribuições recentes</h2>
       {data.recent.length === 0 ? <p>Nenhuma contribuição registrada.</p> : <div className={styles.tableWrap}><table className={styles.table}>
-        <caption>Últimas 20 contribuições · Horário de São Paulo</caption><thead><tr>{['Contribuinte','Presente','Valor','Status','Data / hora'].map(x=><th key={x} scope="col">{x}</th>)}</tr></thead>
-        <tbody>{data.recent.map(r=><tr key={r.id}><th scope="row">{r.contributor_name}</th><td>{r.gift_name}</td><td className={styles.money}>{money(r.amount)}</td><td><span className={styles.status}>{statuses[r.payment_status]}</span></td><td className={styles.money}>{date(r.created_at)}</td></tr>)}</tbody>
+        <caption>Últimas 20 contribuições · Horário de São Paulo</caption><thead><tr>{['Contribuinte','Presente','Valor','Status','Ambiente','Data / hora'].map(x=><th key={x} scope="col">{x}</th>)}</tr></thead>
+        <tbody>{data.recent.map(r=><tr key={r.id}><th scope="row">{r.contributor_name}</th><td>{r.gift_name}</td><td className={styles.money}>{money(r.amount)}</td><td><span className={styles.status}>{statuses[r.payment_status]}</span></td><td>{r.payment_environment === 'test' ? 'TEST' : r.payment_environment === 'production' ? 'Produção' : 'Legado'}</td><td className={styles.money}>{date(r.created_at)}</td></tr>)}</tbody>
       </table></div>}
     </section>
   </main>;

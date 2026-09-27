@@ -10,6 +10,7 @@ import {
 } from '@/lib/payments/mercado-pago/client';
 import { database, databaseInsert, databaseUpdate } from '@/lib/supabase/server';
 import { createPendingGiftContribution } from '@/services/gift-contributions';
+import { getPaymentsEnvironment, type PaymentsEnvironment } from '@/lib/payments/environment';
 
 type ContributionStatus = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
 
@@ -31,6 +32,7 @@ type PaymentAttempt = {
   order_submission_started_at: string | null;
   order_submission_state: 'legacy' | 'not_started' | 'started';
   can_create?: boolean;
+  payment_environment: PaymentsEnvironment;
 };
 
 type StoredContribution = {
@@ -39,11 +41,13 @@ type StoredContribution = {
   payment_status: ContributionStatus;
   contributor_name: string;
   contributor_email: string;
+  payment_environment: PaymentsEnvironment | null;
 };
 
 export type GiftPaymentResult = {
   ok: true;
   payment_status: ContributionStatus;
+  payment_environment: PaymentsEnvironment;
   payment: null | {
     status: 'creating' | 'investigating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
     qr_code: string | null;
@@ -57,8 +61,14 @@ const attemptSelection = [
   'id','contribution_id','provider_idempotency_key','external_reference','provider_order_id',
   'provider_payment_id','provider_status','provider_status_detail','amount','expires_at',
   'pix_qr_code','pix_qr_code_base64','ticket_url','provider_checked_at',
-  'order_submission_started_at','order_submission_state',
+  'order_submission_started_at','order_submission_state','payment_environment',
 ].join(',');
+
+function assertPaymentEnvironment(value: PaymentsEnvironment | null | undefined): PaymentsEnvironment {
+  const current = getPaymentsEnvironment();
+  if (value !== current) throw new Error('payment_environment_mismatch');
+  return current;
+}
 
 function isPastDeadline(attempt: PaymentAttempt) {
   return Date.parse(attempt.expires_at) <= Date.now();
@@ -69,13 +79,17 @@ function statusWithoutOrder(attempt: PaymentAttempt): ContributionStatus {
     ? 'expired' : 'pending';
 }
 
-function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null): GiftPaymentResult {
+function publicResult(
+  status: ContributionStatus,
+  attempt: PaymentAttempt | null,
+  environment: PaymentsEnvironment,
+): GiftPaymentResult {
   if (status === 'confirmed') {
-    return { ok: true, payment_status: status, payment: attempt ? {
+    return { ok: true, payment_status: status, payment_environment: environment, payment: attempt ? {
       status: 'confirmed', qr_code: null, qr_code_base64: null, ticket_url: null, expires_at: attempt.expires_at,
     } : null };
   }
-  if (!attempt) return { ok: true, payment_status: status, payment: null };
+  if (!attempt) return { ok: true, payment_status: status, payment_environment: environment, payment: null };
   const paymentStatus = status === 'expired' ? 'expired'
     : status === 'failed' ? 'failed'
       : status === 'cancelled' ? 'cancelled'
@@ -86,6 +100,7 @@ function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null
   return {
     ok: true,
     payment_status: status,
+    payment_environment: environment,
     payment: {
       status: paymentStatus,
       qr_code: attempt.pix_qr_code,
@@ -105,17 +120,23 @@ async function claimAttempt(contributionId: string) {
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new GiftContributionError(409, 'payment_expired', 'Esta tentativa expirou. Inicie uma nova contribuição.');
   }
-  return rows[0];
+  const stored = await getAttemptByContribution(contributionId);
+  if (!stored || stored.id !== rows[0].id) throw new Error('payment_attempt_not_found');
+  assertPaymentEnvironment(stored.payment_environment);
+  return { ...stored, can_create: rows[0].can_create };
 }
 
 async function getAttemptByContribution(contributionId: string) {
   const rows = await database<PaymentAttempt[]>(
     `payment_attempts?select=${attemptSelection}&contribution_id=eq.${encodeURIComponent(contributionId)}&limit=1`,
   );
-  return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  const attempt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (attempt) assertPaymentEnvironment(attempt.payment_environment);
+  return attempt;
 }
 
 async function reconcile(attempt: PaymentAttempt, order: MercadoPagoOrder): Promise<ContributionStatus> {
+  assertPaymentEnvironment(attempt.payment_environment);
   assertExpectedOrder(order, { amount: attempt.amount, externalReference: attempt.external_reference });
   const rows = await database<string>('rpc/reconcile_gift_payment_attempt', {
     p_attempt_id: attempt.id,
@@ -180,18 +201,19 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
 
 export async function createGiftPayment(value: unknown): Promise<GiftPaymentResult> {
   const result = await createPendingGiftContribution(value);
-  const contribution = result.contribution;
-  if (result.payment_status !== 'pending') return publicResult(result.payment_status, null);
+  const contribution = result.contribution as StoredContribution;
+  const environment = assertPaymentEnvironment(contribution.payment_environment);
+  if (result.payment_status !== 'pending') return publicResult(result.payment_status, null, environment);
   const attempt = await claimAttempt(contribution.id);
   if (attempt.provider_order_id) {
     const refreshed = await refreshAttempt(attempt);
-    return publicResult(refreshed.status ?? 'pending', refreshed.attempt);
+    return publicResult(refreshed.status ?? 'pending', refreshed.attempt, environment);
   }
-  if (isPastDeadline(attempt)) return publicResult(statusWithoutOrder(attempt), attempt);
-  if (!attempt.can_create) return publicResult('pending', attempt);
+  if (isPastDeadline(attempt)) return publicResult(statusWithoutOrder(attempt), attempt, environment);
+  if (!attempt.can_create) return publicResult('pending', attempt, environment);
 
   const created = await createAndReconcile(attempt, contribution);
-  return publicResult(created.status, created.attempt);
+  return publicResult(created.status, created.attempt, environment);
 }
 
 function validateStatusRequest(value: unknown) {
@@ -207,23 +229,24 @@ function validateStatusRequest(value: unknown) {
 export async function getGiftPaymentStatus(value: unknown): Promise<GiftPaymentResult> {
   const key = validateStatusRequest(value);
   const contributions = await database<StoredContribution[]>(
-    `gift_contributions?select=id,gift_id,payment_status,contributor_name,contributor_email&idempotency_key=eq.${encodeURIComponent(key)}&limit=1`,
+    `gift_contributions?select=id,gift_id,payment_status,contributor_name,contributor_email,payment_environment&idempotency_key=eq.${encodeURIComponent(key)}&limit=1`,
   );
   if (!Array.isArray(contributions) || contributions.length !== 1) {
     throw new GiftContributionError(404, 'payment_not_found', 'Não encontramos esta tentativa de pagamento.');
   }
   const contribution = contributions[0];
+  const environment = assertPaymentEnvironment(contribution.payment_environment);
   let attempt = await getAttemptByContribution(contribution.id);
   let status = contribution.payment_status;
   if (status === 'pending' && !attempt?.provider_order_id) {
     const claimed = await claimAttempt(contribution.id);
     attempt = claimed;
     if (isPastDeadline(claimed)) {
-      return publicResult(statusWithoutOrder(claimed), claimed);
+      return publicResult(statusWithoutOrder(claimed), claimed, environment);
     }
     if (claimed.can_create) {
       const created = await createAndReconcile(claimed, contribution);
-      return publicResult(created.status, created.attempt);
+      return publicResult(created.status, created.attempt, environment);
     }
   }
   const checkedAt = attempt?.provider_checked_at ? Date.parse(attempt.provider_checked_at) : 0;
@@ -232,14 +255,16 @@ export async function getGiftPaymentStatus(value: unknown): Promise<GiftPaymentR
     attempt = refreshed.attempt;
     status = refreshed.status ?? status;
   }
-  return publicResult(status, attempt);
+  return publicResult(status, attempt, environment);
 }
 
 async function getAttemptByOrder(orderId: string) {
   const rows = await database<PaymentAttempt[]>(
     `payment_attempts?select=${attemptSelection}&provider_order_id=eq.${encodeURIComponent(orderId)}&limit=1`,
   );
-  return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  const attempt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (attempt) assertPaymentEnvironment(attempt.payment_environment);
+  return attempt;
 }
 
 export async function processMercadoPagoOrder(orderId: string, eventKey: string) {

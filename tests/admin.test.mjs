@@ -29,7 +29,7 @@ test('Admin RLS, explicit authorization, calculations and read-only snapshot',as
     assert.deepEqual(data.groups,{total:1,responded:1,unanswered:0});
     assert.equal(data.gifts.total,3);assert.equal(data.gifts.party,2);assert.equal(data.gifts.insanos,1);
     assert.deepEqual(data.goal_totals,{target:100,raised:40,percentage:40});
-    assert.deepEqual(data.contributions,{pending:1,confirmed:4,expired:1,cancelled:1,failed:1,total:415,goal:90,open:300,fixed:25,insanos:25});
+    assert.deepEqual(data.contributions,{pending:1,confirmed:4,expired:1,cancelled:1,failed:1,test:0,test_confirmed:0,test_total:0,total:415,goal:90,open:300,fixed:25,insanos:25});
     assert.equal(data.goals.length,1);assert.equal(data.goals[0].remaining,60);
     assert.ok(!JSON.stringify(data.goals).includes('Pessoa de teste'));
     assert.equal(data.recent.length,8);
