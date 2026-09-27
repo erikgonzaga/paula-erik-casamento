@@ -281,6 +281,7 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
   const contribution = {
     id: attempt.contribution_id, gift_id: '70000000-0000-4000-8000-000000000001',
     payment_status: 'pending', contributor_name: 'Test', contributor_email: 'test@example.test',
+    payment_environment: 'test',
   };
   const databaseUrl = moduleUrl(`
     export const calls = [];
@@ -316,6 +317,7 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
     export function assertExpectedOrder() {}
   `);
   const contributionUrl = moduleUrl('export class GiftContributionError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }');
+  const environmentUrl = moduleUrl(`export function getPaymentsEnvironment() { return 'test'; }`);
   const pendingUrl = moduleUrl(`export async function createPendingGiftContribution() {
     return { payment_status: 'pending', contribution: ${JSON.stringify(contribution)} };
   }`);
@@ -324,7 +326,8 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)
     .replace("from '@/lib/supabase/server'", `from '${databaseUrl}'`)
-    .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`);
+    .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`)
+    .replace("from '@/lib/payments/environment'", `from '${environmentUrl}'`);
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -342,7 +345,7 @@ test('service never posts an expired attempt, including one with a lost response
     provider_status: 'creating', provider_status_detail: null, amount: 50,
     expires_at: new Date(Date.now() - 60_000).toISOString(),
     provider_checked_at: null, pix_qr_code: null, pix_qr_code_base64: null,
-    ticket_url: null, can_create: false,
+    ticket_url: null, can_create: false, payment_environment: 'test',
   };
   const unsent = await paymentServiceFixture({ attempt: { ...base,
     order_submission_started_at: null, order_submission_state: 'not_started' } });
@@ -376,6 +379,7 @@ test('provider timeout, 429 and 503 defer the job without financial reconciliati
       provider_status: 'processing', amount: 50,
       expires_at: new Date(Date.now() - 60_000).toISOString(),
       provider_checked_at: null, order_submission_started_at: new Date().toISOString(),
+      payment_environment: 'test',
     };
     const fixture = await paymentServiceFixture({ attempt, providerError });
     assert.deepEqual(await fixture.service.reconcilePendingGiftPaymentsBatch(),
@@ -393,7 +397,7 @@ test('expired known Order is read and job never creates an Order', async () => {
     provider_status_detail: 'in_process', amount: 50,
     expires_at: new Date(Date.now() - 60_000).toISOString(),
     provider_checked_at: null, order_submission_started_at: new Date(Date.now() - 31 * 60_000).toISOString(),
-    pix_qr_code: null, pix_qr_code_base64: null, ticket_url: null, can_create: false,
+    pix_qr_code: null, pix_qr_code_base64: null, ticket_url: null, can_create: false, payment_environment: 'test',
   };
   const fixture = await paymentServiceFixture({ attempt });
   assert.equal((await fixture.service.createGiftPayment({})).payment_status, 'pending');
