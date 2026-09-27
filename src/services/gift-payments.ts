@@ -120,15 +120,19 @@ async function claimAttempt(contributionId: string) {
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new GiftContributionError(409, 'payment_expired', 'Esta tentativa expirou. Inicie uma nova contribuição.');
   }
-  assertPaymentEnvironment(rows[0].payment_environment);
-  return rows[0];
+  const stored = await getAttemptByContribution(contributionId);
+  if (!stored || stored.id !== rows[0].id) throw new Error('payment_attempt_not_found');
+  assertPaymentEnvironment(stored.payment_environment);
+  return { ...stored, can_create: rows[0].can_create };
 }
 
 async function getAttemptByContribution(contributionId: string) {
   const rows = await database<PaymentAttempt[]>(
     `payment_attempts?select=${attemptSelection}&contribution_id=eq.${encodeURIComponent(contributionId)}&limit=1`,
   );
-  return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  const attempt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (attempt) assertPaymentEnvironment(attempt.payment_environment);
+  return attempt;
 }
 
 async function reconcile(attempt: PaymentAttempt, order: MercadoPagoOrder): Promise<ContributionStatus> {
