@@ -262,7 +262,9 @@ async function getAttemptByOrder(orderId: string) {
   const rows = await database<PaymentAttempt[]>(
     `payment_attempts?select=${attemptSelection}&provider_order_id=eq.${encodeURIComponent(orderId)}&limit=1`,
   );
-  return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  const attempt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (attempt) assertPaymentEnvironment(attempt.payment_environment);
+  return attempt;
 }
 
 export async function processMercadoPagoOrder(orderId: string, eventKey: string) {
