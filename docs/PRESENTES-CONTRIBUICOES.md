@@ -44,7 +44,7 @@ O índice parcial `contributions_external_reference_uidx` impede repetição da 
 
 ## Segurança e progresso
 
-RLS de `gifts` permanece intacta: público lê somente ativos. `gift_contributions` tem RLS habilitada, nenhum grant nem policy para `anon`/`authenticated` e acesso de dados apenas para `service_role` no servidor. Não há nova variável de ambiente nem uso de service role no navegador.
+RLS de `gifts` permanece intacta: público lê somente ativos. `gift_contributions` tem RLS habilitada, nenhum grant nem policy para `anon`/`authenticated` e acesso de dados apenas para `service_role` no servidor. `PAYMENT_RECONCILIATION_SECRET` será necessário somente no servidor quando o endpoint interno for publicado; não há uso de service role no navegador.
 
 `get_gift_progress()` é SQL STABLE SECURITY DEFINER, com `search_path=''`, referências qualificadas e EXECUTE restrito a `anon`, `authenticated` e `service_role` (revogado de PUBLIC). Retorna uma linha por presente ativo, somente:
 
@@ -92,18 +92,13 @@ O navegador recebe apenas `payment_status`, QR Code/copia e cola, URL HTTPS do c
 
 `POST /api/payments/mercado-pago/webhook` aceita somente eventos `order`, valida `x-signature` e `x-request-id` com o validador oficial, deduplica o evento e busca a ordem autenticadamente antes de reconciliar. O payload da notificação nunca é usado como prova de pagamento. Somente `processed` com detalhe `accredited`, referência, moeda e valor esperados confirma a contribuição; repetições permanecem idempotentes.
 
+A migration incremental `202609260001_pix_expiry_reconciliation.sql` foi aplicada como SQL isolado no Supabase remoto em 27/09/2026, após validação em PostgreSQL 17.11 real com concorrência, locks, crash após `begin`, confirmação concorrente, leases e `SKIP LOCKED`. Os 13 pagamentos confirmados e o total de R$ 775,00 permaneceram iguais antes e depois. As 21 `payment_attempts` anteriores foram classificadas como `legacy`: 15 com Order e 6 sem Order. As 6 sem Order não foram expiradas, não receberam nova Order e não podem iniciar outro POST. A migration impede iniciar novas Orders depois de `expires_at`, distingue envio incerto de tentativa nunca enviada e permite que um job protegido consulte periodicamente Orders conhecidas. O prazo local não expira uma Order que o Mercado Pago ainda considera válida. A versão `202609260001` continua ausente de `supabase_migrations.schema_migrations`, assim como versões anteriores executadas manualmente; o histórico não foi reparado. Ver [Reconciliação Pix](RECONCILIACAO-PIX.md) para as etapas ainda pendentes.
+
 Na validação HMAC da Order, passamos ao `WebhookSignatureValidator` oficial do SDK `mercadopago` 3.6.1 o `x-signature` e o `x-request-id` recebidos nos headers, o `data.id` original da query e `MERCADO_PAGO_WEBHOOK_SECRET` do ambiente, conforme o exemplo de [Checkout API Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications). Não fazemos lowercase nem calculamos HMAC alternativo para aceitar notificações. O SDK aplica seu próprio trim, extrai `ts` e `v1` e valida o manifest; assinatura inválida retorna 401. O diagnóstico sanitizado em desenvolvimento/TEST apenas registra a estrutura da falha, sem alterar a decisão de segurança. A Order só é processada após validação bem-sucedida.
 
-Estado de homologação: a criação de Order Pix TEST funcionou, mas notificações automáticas e o simulador oficial retornam `SignatureMismatch`/401. A validação de assinatura permanece obrigatória; o webhook ainda não está homologado. O código C6 é experimental e está fora do caminho crítico desta integração.
+Estado de homologação: a integração Mercado Pago e o webhook passaram por testes anteriores, incluindo assinatura válida e recebimento HTTP 200 por um túnel temporário. Esse túnel não é infraestrutura definitiva: ainda falta validar o webhook no domínio publicado. O endpoint interno de reconciliação existe no código, mas não foi publicado nem homologado em produção; `PAYMENT_RECONCILIATION_SECRET`, Vault e Cron ainda não foram configurados. A homologação final ponta a ponta em produção permanece pendente. O código C6 é experimental e está fora do caminho crítico desta integração.
 
-Para homologar manualmente:
-
-1. conferir backup e ordem das migrations no projeto Supabase de desenvolvimento;
-2. reconciliar em etapa própria o histórico de migrations com o schema remoto, sem reexecutar `202609220001` ou `202609220002`;
-3. configurar os cinco nomes documentados em `.env.example`, sempre por canal seguro, mantendo `PAYMENTS_ENVIRONMENT=test`;
-4. cadastrar a URL HTTPS `/api/payments/mercado-pago/webhook` para eventos Orders;
-5. resolver o bloqueio de assinatura sem aceitar notificações inválidas e então testar aprovação, expiração, retry idempotente, webhook duplicado, meta concorrente e presente único;
-6. revisar tabela administrativa, logs sem PII e conciliação antes de qualquer decisão de produção.
+Pendente para produção: criar o commit, fazer push/deploy, configurar `PAYMENT_RECONCILIATION_SECRET` por canal seguro, testar manualmente o endpoint publicado, configurar Vault e Cron, validar o webhook no domínio definitivo e concluir a homologação ponta a ponta. Tratar a divergência do histórico de migrations em etapa própria, sem reexecutar SQLs já aplicados. Manter a validação de assinatura obrigatória.
 
 Esta etapa de versionamento não executa operações remotas nem modifica o banco.
 

@@ -17,7 +17,7 @@ const insaneButtonClasses: Record<string, string> = {
 };
 
 function MedalTitle({ name }: { name: string }) {
-  const parts = name.match(/^(Presente Insano) (— Medalha (?:Bronze|Prata|Ouro))$/i);
+  const parts = name.match(/^(Presente Insano) (— Moeda de (?:Bronze|Prata|Ouro))$/i);
   return <h3>{parts ? <>
     <span className={styles.medalTitleLine}>{parts[1].toUpperCase()}</span>{' '}
     <span className={styles.medalTitleLine}>{parts[2].replace(/^—\s*/, '').toUpperCase()}</span>

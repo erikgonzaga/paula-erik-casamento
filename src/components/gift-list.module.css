@@ -17,3 +17,6 @@
 .transparentMediaBackground{background:var(--paper)}
 .transparentCardImage{padding:10px;background:transparent;mix-blend-mode:multiply}
 .modalImageAsset.transparentModalImage{object-fit:contain;padding:16px;background:transparent;mix-blend-mode:multiply;-webkit-mask-image:none;mask-image:none}
+.close{display:grid;place-items:center;padding:0}
+@media(max-width:640px){.filters{justify-content:center;flex-wrap:wrap;overflow-x:visible}}
+@media(max-width:370px){.filters{max-width:190px;margin-inline:auto}}

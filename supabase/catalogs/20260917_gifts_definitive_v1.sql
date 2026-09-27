@@ -46,9 +46,9 @@ Escolha quanto quiser contribuir para dar aquela força final aos noivos.', '/im
   (33, 'travel', 'Café da manhã dos recém-casados', 'cafe-da-manha-gramado', 'goal', 500.00, 'Porque começar o dia juntinhos e com um bom café também faz parte da viagem.', '/images/presentes/catalogo/cafe-da-manha-gramado.png', 'regular', true, true, false),
   (34, 'travel', 'Passeios especiais em Gramado', 'passeios-gramado', 'goal', 1500.00, 'Faça parte de uma das experiências que vamos guardar na memória dessa viagem.', '/images/presentes/catalogo/passeios-gramado.png', 'regular', true, true, false),
   (35, 'travel', 'Jantares românticos em Gramado', 'jantares-gramado', 'goal', 800.00, 'Um jantar especial para celebrarmos essa nova fase da nossa vida.', '/images/presentes/catalogo/jantares-gramado.png', 'regular', true, true, false),
-  (36, 'insanos', 'Presente Insano — Medalha Bronze', 'moeda-bronze', 'fixed', 75.00, 'Uma contribuição simbólica para seguir na estrada.', '/images/presentes/moeda-bronze-final.png', 'insanos', true, true, false),
-  (37, 'insanos', 'Presente Insano — Medalha Prata', 'moeda-prata', 'fixed', 150.00, 'Um gesto especial para acompanhar o próximo capítulo.', '/images/presentes/moeda-prata-final.png', 'insanos', true, true, false),
-  (38, 'insanos', 'Presente Insano — Medalha Ouro', 'moeda-ouro', 'fixed', 225.00, 'Uma grande força para esta nova caminhada.', '/images/presentes/moeda-ouro-final.png', 'insanos', true, true, false)
+  (36, 'insanos', 'Presente Insano — Moeda de Bronze', 'moeda-bronze', 'fixed', 75.00, 'Uma contribuição simbólica para seguir na estrada.', '/images/presentes/moeda-bronze-final.png', 'insanos', true, true, false),
+  (37, 'insanos', 'Presente Insano — Moeda de Prata', 'moeda-prata', 'fixed', 150.00, 'Um gesto especial para acompanhar o próximo capítulo.', '/images/presentes/moeda-prata-final.png', 'insanos', true, true, false),
+  (38, 'insanos', 'Presente Insano — Moeda de Ouro', 'moeda-ouro', 'fixed', 225.00, 'Uma grande força para esta nova caminhada.', '/images/presentes/moeda-ouro-final.png', 'insanos', true, true, false)
 on conflict (slug) do update set
   display_order = excluded.display_order,
   category = excluded.category,

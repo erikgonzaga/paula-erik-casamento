@@ -495,7 +495,7 @@ test('R$1,000 goal admits R$200 from R$900, then closes to new contributions', a
 });
 
 test('Two issued R$100 Pix at R$900 both confirm, including one after local expiry', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609260001_pix_expiry_reconciliation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Meta com dois Pix','meta-dois-pix','house','goal',1000) returning id`)).rows[0].id;

@@ -254,7 +254,8 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     provider_order_id: null,
     provider_status: 'creating',
     amount: 50,
-    expires_at: '2026-09-23T01:00:00.000Z',
+    expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    order_submission_started_at: null,
     can_create: true,
   };
   const contribution = {
@@ -269,6 +270,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     export async function database(path) {
       queries.push(path);
       if (path === 'rpc/claim_gift_payment_attempt') return [${JSON.stringify(attempt)}];
+      if (path === 'rpc/begin_gift_order_submission') return true;
       if (path.startsWith('gifts?select=id,name&id=eq.')) return [{ id: ${JSON.stringify(giftItem.giftId)}, name: ${JSON.stringify(giftItem.giftName)} }];
       if (path === 'rpc/reconcile_gift_payment_attempt') return 'pending';
       if (path.startsWith('payment_attempts?select=')) return [${JSON.stringify(attempt)}];

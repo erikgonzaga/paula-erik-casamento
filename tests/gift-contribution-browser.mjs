@@ -61,7 +61,7 @@ try {
     await dialog.getByRole('button', { name: 'Fechar detalhes do presente' }).click();
 
     await page.locator('#contribuir-bronze').click();
-    const insaneDialog = page.getByRole('dialog', { name: /Medalha Bronze/i });
+    const insaneDialog = page.getByRole('dialog', { name: /Moeda de Bronze/i });
     assert.ok(await insaneDialog.getByLabel(/Nome de Colete/).isVisible());
     assert.equal(await insaneDialog.locator('input[name="amount"]').count(), 0);
     const insaneBounds = await insaneDialog.boundingBox();

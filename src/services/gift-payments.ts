@@ -28,6 +28,8 @@ type PaymentAttempt = {
   pix_qr_code_base64: string | null;
   ticket_url: string | null;
   provider_checked_at: string | null;
+  order_submission_started_at: string | null;
+  order_submission_state: 'legacy' | 'not_started' | 'started';
   can_create?: boolean;
 };
 
@@ -43,7 +45,7 @@ export type GiftPaymentResult = {
   ok: true;
   payment_status: ContributionStatus;
   payment: null | {
-    status: 'creating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
+    status: 'creating' | 'investigating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
     qr_code: string | null;
     qr_code_base64: string | null;
     ticket_url: string | null;
@@ -55,7 +57,17 @@ const attemptSelection = [
   'id','contribution_id','provider_idempotency_key','external_reference','provider_order_id',
   'provider_payment_id','provider_status','provider_status_detail','amount','expires_at',
   'pix_qr_code','pix_qr_code_base64','ticket_url','provider_checked_at',
+  'order_submission_started_at','order_submission_state',
 ].join(',');
+
+function isPastDeadline(attempt: PaymentAttempt) {
+  return Date.parse(attempt.expires_at) <= Date.now();
+}
+
+function statusWithoutOrder(attempt: PaymentAttempt): ContributionStatus {
+  return isPastDeadline(attempt) && attempt.order_submission_state === 'not_started'
+    ? 'expired' : 'pending';
+}
 
 function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null): GiftPaymentResult {
   if (status === 'confirmed') {
@@ -67,7 +79,9 @@ function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null
   const paymentStatus = status === 'expired' ? 'expired'
     : status === 'failed' ? 'failed'
       : status === 'cancelled' ? 'cancelled'
-        : attempt.provider_status === 'creating' || attempt.provider_status === 'processing' ? 'creating'
+        : !attempt.provider_order_id && attempt.order_submission_state !== 'not_started'
+          ? 'investigating'
+          : attempt.provider_status === 'creating' || attempt.provider_status === 'processing' ? 'creating'
           : 'waiting';
   return {
     ok: true,
@@ -88,7 +102,9 @@ async function claimAttempt(contributionId: string) {
     p_provider_idempotency_key: randomUUID(),
     p_lease_seconds: 30,
   });
-  if (!Array.isArray(rows) || rows.length !== 1) throw new Error('payment_attempt_unavailable');
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new GiftContributionError(409, 'payment_expired', 'Esta tentativa expirou. Inicie uma nova contribuição.');
+  }
   return rows[0];
 }
 
@@ -133,6 +149,19 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
   if (!gift || gift.id !== contribution.gift_id || !gift.name?.trim()) {
     throw new Error('payment_gift_unavailable');
   }
+  if (Date.parse(attempt.expires_at) <= Date.now() + 5000) {
+    const latest = await claimAttempt(contribution.id);
+    return { attempt: latest, status: statusWithoutOrder(latest) };
+  }
+  // The database makes the deadline decision while holding the contribution
+  // lock and records that a request may have reached the provider.
+  const maySend = await database<boolean>('rpc/begin_gift_order_submission', {
+    p_attempt_id: attempt.id,
+  });
+  if (!maySend || isPastDeadline(attempt)) {
+    const latest = await claimAttempt(contribution.id);
+    return { attempt: latest, status: statusWithoutOrder(latest) };
+  }
   const order = await createPixOrder({
     amount: attempt.amount,
     giftId: gift.id,
@@ -158,6 +187,7 @@ export async function createGiftPayment(value: unknown): Promise<GiftPaymentResu
     const refreshed = await refreshAttempt(attempt);
     return publicResult(refreshed.status ?? 'pending', refreshed.attempt);
   }
+  if (isPastDeadline(attempt)) return publicResult(statusWithoutOrder(attempt), attempt);
   if (!attempt.can_create) return publicResult('pending', attempt);
 
   const created = await createAndReconcile(attempt, contribution);
@@ -188,6 +218,9 @@ export async function getGiftPaymentStatus(value: unknown): Promise<GiftPaymentR
   if (status === 'pending' && !attempt?.provider_order_id) {
     const claimed = await claimAttempt(contribution.id);
     attempt = claimed;
+    if (isPastDeadline(claimed)) {
+      return publicResult(statusWithoutOrder(claimed), claimed);
+    }
     if (claimed.can_create) {
       const created = await createAndReconcile(claimed, contribution);
       return publicResult(created.status, created.attempt);
@@ -240,4 +273,34 @@ export async function processMercadoPagoOrder(orderId: string, eventKey: string)
     processed_at: new Date().toISOString(),
     outcome: 'reconciled',
   });
+}
+
+export async function reconcilePendingGiftPaymentsBatch() {
+  const expiredUnsent = await database<number>('rpc/expire_gift_contribution_pending', {
+    p_idempotency_key: null,
+  });
+  const candidates = await database<Array<{ id: string; contribution_id: string }>>(
+    'rpc/claim_due_gift_payment_reconciliation',
+    { p_limit: 10, p_lease_seconds: 120 },
+  );
+  if (!Array.isArray(candidates) || candidates.length > 10) {
+    throw new Error('invalid_reconciliation_batch');
+  }
+  let reconciled = 0;
+  let deferred = 0;
+  for (const candidate of candidates) {
+    try {
+      const attempt = await getAttemptByContribution(candidate.contribution_id);
+      if (!attempt || attempt.id !== candidate.id || !attempt.provider_order_id) continue;
+      await refreshAttempt(attempt);
+      reconciled += 1;
+    } catch (error) {
+      deferred += 1;
+      // A 429 asks the caller to slow down; the persisted lease makes a later
+      // run retry without changing the financial status.
+      if (error instanceof Error && 'diagnostic' in error &&
+          (error as { diagnostic?: { httpStatus?: number } }).diagnostic?.httpStatus === 429) break;
+    }
+  }
+  return { expiredUnsent, selected: candidates.length, reconciled, deferred };
 }

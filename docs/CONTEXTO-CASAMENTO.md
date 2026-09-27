@@ -99,7 +99,7 @@ O endereço de produção informado durante o desenvolvimento é `https://paula-
 - A Home não revela o buffet nem detalhes de chegada.
 - A página de presentes é editorial e leve. Os filtros “Todos”, “Festa”, “Casa” e “Viagem” atuam apenas sobre os presentes comuns.
 - “Presentes Insanos” é independente dos filtros e sempre fica ao final do catálogo.
-- A referência motociclista é deliberadamente restrita à seção Insanos, com fundo escuro, medalhas e detalhes metálicos.
+- A referência motociclista é deliberadamente restrita à seção Insanos, com fundo escuro, moedas e detalhes metálicos.
 - No mobile, a fotografia da seção Insanos é um único background contínuo, não um banner separado.
 - A ordem de “Presentes Insanos” é fixa em todos os breakpoints: título, linha, introdução, assinatura, cards, moto, frase final.
 

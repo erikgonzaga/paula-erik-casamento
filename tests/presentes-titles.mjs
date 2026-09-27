@@ -9,7 +9,7 @@ import { mkdir } from 'node:fs/promises';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.argv[2] || 'playwright');
 const medals = ['Bronze', 'Prata', 'Ouro'].map((level, index) => ({
-  id: String(index), name: `Presente Insano — Medalha ${level}`,
+  id: String(index), name: `Presente Insano — Moeda de ${level}`,
   slug: `moeda-${level.toLowerCase()}`, category: 'insanos', gift_type: 'insanos',
   funding_mode: 'fixed', target_amount: [75, 150, 225][index],
   description: 'Uma contribuição simbólica para seguir na estrada.',

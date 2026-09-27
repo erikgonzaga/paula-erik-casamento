@@ -27,7 +27,7 @@ const suggestions = [50, 100, 200];
 type PaymentResult = {
   payment_status: 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
   payment: null | {
-    status: 'creating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
+    status: 'creating' | 'investigating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
     qr_code: string | null;
     qr_code_base64: string | null;
     ticket_url: string | null;
@@ -131,6 +131,11 @@ export function GiftContributionForm({ gift }: { gift: Gift }) {
       </div>;
     }
     const pix = payment.payment;
+    if (pix?.status === 'investigating') {
+      return <div className={styles.waiting} role="status">
+        Estamos verificando esta tentativa de pagamento. Não inicie outro Pix para esta contribuição.
+      </div>;
+    }
     const image = pix?.qr_code_base64
       ? (pix.qr_code_base64.startsWith('data:') ? pix.qr_code_base64 : `data:image/png;base64,${pix.qr_code_base64}`)
       : null;

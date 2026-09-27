@@ -1,6 +1,6 @@
 .page{overflow:hidden}
 .hero{position:relative;max-width:820px;padding:88px 0 76px;text-align:center}
-.heroFloral{position:absolute;z-index:-1;width:210px;height:auto;right:-130px;top:18px;opacity:.48;transform:rotate(8deg)}
+.heroFloral{position:absolute;z-index:-1;width:210px;height:auto;left:-130px;top:18px;opacity:.48;transform:rotate(8deg)}
 .hero h1{margin:25px 0;color:var(--olive);font-size:clamp(3.146rem,7.26vw,6.655rem);line-height:.94;letter-spacing:-.055em;white-space:nowrap}
 .hero h1 em{color:var(--rose);font-weight:400;font-style:italic}
 .hero>p:not(.eyebrow){max-width:620px;margin:0 auto 15px;font-size:1.05rem;line-height:1.65}
@@ -72,7 +72,8 @@
 
 @media(max-width:767px){
   .hero{padding:60px 0}
-  .heroFloral{width:140px;right:-72px;top:12px}
+  .heroFloral{width:140px;left:-72px;top:12px}
+  .hero h1{font-size:clamp(2.05rem,9vw,2.4rem)}
   .catalog{padding:58px 0 72px}
   .insane{min-height:0;display:block;background:#080807 url('/images/presentes/banner-presentes-insanos.png') 58% top/cover no-repeat}
   .insane:before{display:block;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.57),rgba(0,0,0,.68) 38%,rgba(0,0,0,.76))}

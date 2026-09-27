@@ -136,5 +136,5 @@ Composição:
 
 A ordem textual nunca deve ser invertida por `order`: introdução sempre antes de “Gratidão, irmãos!”.
 
-Os títulos completos das medalhas são derivados de `gift.name` sem alterar o banco: “PRESENTE INSANO” e “MEDALHA …” ocupam duas linhas intencionais, centralizadas e sem o travessão visual, em todos os breakpoints. Fonte e nomes originais são preservados. Validado em navegador local em 375, 430, 768, 1024, 1280 e 1440 px, sem texto fora dos cards. O teste opcional `tests/presentes-titles.mjs` usa catálogo HTTP em memória e Playwright, sem acessar o Supabase.
+Os títulos completos das moedas são derivados de `gift.name`: “PRESENTE INSANO” e “MOEDA DE …” ocupam duas linhas intencionais, centralizadas e sem o travessão visual, em todos os breakpoints. O teste opcional `tests/presentes-titles.mjs` usa catálogo HTTP em memória e Playwright, sem acessar o Supabase.
 

@@ -45,13 +45,13 @@ São 38 presentes: 7 Festa, 22 Casa, 6 Viagem e 3 Insanos. Todos ativos, allow_m
 | 33 | travel | Café da manhã dos recém-casados | goal | 500.00 |
 | 34 | travel | Passeios especiais em Gramado | goal | 1500.00 |
 | 35 | travel | Jantares românticos em Gramado | goal | 800.00 |
-| 36 | insanos | Presente Insano — Medalha Bronze | fixed | 75.00 |
-| 37 | insanos | Presente Insano — Medalha Prata | fixed | 150.00 |
-| 38 | insanos | Presente Insano — Medalha Ouro | fixed | 225.00 |
+| 36 | insanos | Presente Insano — Moeda de Bronze | fixed | 75.00 |
+| 37 | insanos | Presente Insano — Moeda de Prata | fixed | 150.00 |
+| 38 | insanos | Presente Insano — Moeda de Ouro | fixed | 225.00 |
 
 ## Descrições
 
-As descrições dos itens 1–6 e 8–29 são propostas novas. O item 7 e os itens 30–35 preservam integralmente os textos enviados pelo casal. As três medalhas mantêm as descrições aprovadas já existentes.
+As descrições dos itens 1–6 e 8–29 são propostas novas. O item 7 e os itens 30–35 preservam integralmente os textos enviados pelo casal. As três moedas mantêm as descrições aprovadas já existentes.
 
 1. **Docinhos finos para adoçar nosso grande dia** — Um carinho para adoçar os encontros e as lembranças do nosso grande dia.
 
@@ -123,11 +123,11 @@ As descrições dos itens 1–6 e 8–29 são propostas novas. O item 7 e os ite
 
 35. **Jantares românticos em Gramado** — Um jantar especial para celebrarmos essa nova fase da nossa vida.
 
-36. **Presente Insano — Medalha Bronze** — Uma contribuição simbólica para seguir na estrada.
+36. **Presente Insano — Moeda de Bronze** — Uma contribuição simbólica para seguir na estrada.
 
-37. **Presente Insano — Medalha Prata** — Um gesto especial para acompanhar o próximo capítulo.
+37. **Presente Insano — Moeda de Prata** — Um gesto especial para acompanhar o próximo capítulo.
 
-38. **Presente Insano — Medalha Ouro** — Uma grande força para esta nova caminhada.
+38. **Presente Insano — Moeda de Ouro** — Uma grande força para esta nova caminhada.
 
 ## Texto editorial de Viagem
 
@@ -142,7 +142,7 @@ Texto preservado para futura aplicação editorial; não foi inserido em um pres
 
 Os 35 presentes regulares possuem imagens definitivas em `public/images/presentes/catalogo`, nomeadas pelo slug estável. O catálogo aponta `image_url` para esses assets. O componente continua renderizando `Image` condicionalmente; o wrapper dos cards mantém `aspect-ratio` e fundo `var(--sand)`, e o modal mantém `min-height`/fundo, preservando o fallback caso um registro futuro não possua imagem.
 
-As medalhas preservam os caminhos locais moeda-bronze-final.png, moeda-prata-final.png e moeda-ouro-final.png, e os slugs moeda-bronze/moeda-prata/moeda-ouro. Esses slugs também selecionam as cores dos botões: não devem ser trocados casualmente. Os nomes completos pedidos foram mantidos; como são mais longos que os anteriores, revisar a quebra dos títulos Insanos em uma futura prévia antes de publicar. Nenhum CSS, componente ou asset foi alterado nesta etapa.
+As moedas preservam os caminhos locais moeda-bronze-final.png, moeda-prata-final.png e moeda-ouro-final.png, e os slugs moeda-bronze/moeda-prata/moeda-ouro. Esses slugs também selecionam as cores dos botões: não devem ser trocados casualmente. Os nomes completos devem ser conferidos na prévia antes de publicar.
 
 Referências visuais futuras da Casa: eletrodomésticos preferencialmente pretos; cama, mesa e banho em bege, marrom, branco, off-white e caramelo. Não são campos de banco.
 

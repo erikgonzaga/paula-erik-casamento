@@ -102,7 +102,7 @@ Os cards regulares preservam o recorte mobile `16:8`, fazem uma transição para
 
 Os enquadramentos aprovados das fotografias continuam em um mapa de apresentação no componente. O seed opcional `supabase/seeds/gifts-development.sql` reproduz o catálogo provisório anterior para testes locais, mas não é executado pelo fluxo normal de seed nem deve ser aplicado automaticamente em produção.
 
-O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, fora de migrations, do seed automático e da aplicação. O casal informou que os 38 registros já estão no Supabase. Os 35 regulares usam imagens definitivas locais nomeadas por slug em `public/images/presentes/catalogo`; as medalhas mantêm seus assets e slugs próprios. O SQL idempotente `supabase/catalogs/20260919_gift_images_v1.sql` permite revisar e aplicar somente os `image_url`, sem alterar os demais dados. Ver [Catálogo definitivo](CATALOGO-DEFINITIVO.md).
+O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_definitive_v1.sql`, fora de migrations, do seed automático e da aplicação. O casal informou que os 38 registros já estão no Supabase. Os 35 regulares usam imagens definitivas locais nomeadas por slug em `public/images/presentes/catalogo`; as moedas mantêm seus assets e slugs próprios. O SQL idempotente `supabase/catalogs/20260919_gift_images_v1.sql` permite revisar e aplicar somente os `image_url`, sem alterar os demais dados. Ver [Catálogo definitivo](CATALOGO-DEFINITIVO.md).
 
 ## RSVP e convite fechado
 
