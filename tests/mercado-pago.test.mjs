@@ -9,9 +9,17 @@ const diagnosticOutput = ts.transpileModule(diagnosticSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const diagnosticUrl = `data:text/javascript;base64,${Buffer.from(diagnosticOutput).toString('base64')}`;
+const environmentUrl = `data:text/javascript;base64,${Buffer.from(`
+  export function getPaymentsEnvironment() {
+    const value = process.env.PAYMENTS_ENVIRONMENT;
+    if (value !== 'test' && value !== 'production') throw new Error('invalid_payments_environment');
+    return value;
+  }
+`).toString('base64')}`;
 const source = (await readFile(new URL('../src/lib/payments/mercado-pago/client.ts', import.meta.url), 'utf8'))
   .replace("import 'server-only';", '')
-  .replace("from '@/lib/server-diagnostics'", `from '${diagnosticUrl}'`);
+  .replace("from '@/lib/server-diagnostics'", `from '${diagnosticUrl}'`)
+  .replace("from '@/lib/payments/environment'", `from '${environmentUrl}'`);
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 });
@@ -257,6 +265,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
     order_submission_started_at: null,
     can_create: true,
+    payment_environment: 'test',
   };
   const contribution = {
     id: attempt.contribution_id,
@@ -264,6 +273,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     payment_status: 'pending',
     contributor_name: 'Pessoa de Teste',
     contributor_email: 'unused@example.test',
+    payment_environment: 'test',
   };
   const databaseUrl = moduleUrl(`
     export const queries = [];
@@ -297,7 +307,8 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)
     .replace("from '@/lib/supabase/server'", `from '${databaseUrl}'`)
-    .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`);
+    .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`)
+    .replace("from '@/lib/payments/environment'", `from '${environmentUrl}'`);
   const serviceOutput = ts.transpileModule(serviceSource, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
