@@ -26,6 +26,7 @@ const suggestions = [50, 100, 200];
 
 type PaymentResult = {
   payment_status: 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
+  payment_environment: 'test' | 'production';
   payment: null | {
     status: 'creating' | 'investigating' | 'waiting' | 'confirmed' | 'expired' | 'failed' | 'cancelled';
     qr_code: string | null;
@@ -122,7 +123,10 @@ export function GiftContributionForm({ gift }: { gift: Gift }) {
   if (payment) {
     if (payment.payment_status === 'confirmed') {
       return <div className={styles.success} role="status">
-        <strong>Pagamento confirmado.</strong><br />Muito obrigado por fazer parte desta caminhada.
+        <strong>{payment.payment_environment === 'test' ? 'Pagamento de teste aprovado.' : 'Pagamento confirmado.'}</strong><br />
+        {payment.payment_environment === 'test'
+          ? 'Simulação concluída. Nenhum recebimento financeiro real foi registrado.'
+          : 'Muito obrigado por fazer parte desta caminhada.'}
       </div>;
     }
     if (payment.payment_status !== 'pending') {
@@ -140,7 +144,12 @@ export function GiftContributionForm({ gift }: { gift: Gift }) {
       ? (pix.qr_code_base64.startsWith('data:') ? pix.qr_code_base64 : `data:image/png;base64,${pix.qr_code_base64}`)
       : null;
     return <section className={styles.payment} aria-live="polite">
-      <p className={styles.paymentEyebrow}>Pagamento via Pix</p>
+      <p className={styles.paymentEyebrow}>
+        {payment.payment_environment === 'test' ? 'Teste de pagamento via Pix' : 'Pagamento via Pix'}
+      </p>
+      {payment.payment_environment === 'test' && <p className={styles.waiting} role="status">
+        Ambiente de teste: o Mercado Pago pode aprovar este Pix automaticamente. Nenhuma cobrança real será realizada.
+      </p>}
       {image && <Image className={styles.qrCode} src={image} width={250} height={250} unoptimized
         alt="QR Code Pix desta contribuição" />}
       {pix?.qr_code ? <>
