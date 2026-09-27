@@ -1,5 +1,6 @@
 import 'server-only';
 import { logDevelopmentDiagnostic, safeDiagnosticCode, safeDiagnosticText } from '@/lib/server-diagnostics';
+import { getPaymentsEnvironment } from '@/lib/payments/environment';
 
 export type MercadoPagoPayment = {
   id: string | null;
@@ -91,10 +92,13 @@ function safeOrderRequestSummary(body: BodyInit | null | undefined): string | un
 
 function configuration() {
   const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  const environment = process.env.PAYMENTS_ENVIRONMENT;
-  if (!accessToken || (environment !== 'test' && environment !== 'production')) {
+  let environment: 'test' | 'production';
+  try {
+    environment = getPaymentsEnvironment();
+  } catch {
     throw new MercadoPagoError('configuration');
   }
+  if (!accessToken) throw new MercadoPagoError('configuration');
   return { accessToken, environment } as const;
 }
 
