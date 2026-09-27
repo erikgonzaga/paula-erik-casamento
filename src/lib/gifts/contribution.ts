@@ -39,6 +39,7 @@ export type ExistingContribution = {
   amount: string;
   contributor_email: string;
   expires_at: string;
+  payment_environment: 'test' | 'production' | null;
 };
 
 type NormalizedRequest = Omit<PendingContribution, 'request_fingerprint' | 'amount' | 'payment_status' | 'payment_method' |
