@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createDatabase } from './database-fixture.mjs';
 
 test('Gifts constraints and public read-only RLS', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
 
   try {
     await db.query(
@@ -48,7 +48,7 @@ test('Gifts constraints and public read-only RLS', async () => {
 });
 
 test('Development gift seed stays separate and preserves the approved catalog split', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
 
   try {
     const seed = await readFile(new URL('../supabase/seeds/gifts-development.sql', import.meta.url), 'utf8');
@@ -69,7 +69,7 @@ test('Development gift seed stays separate and preserves the approved catalog sp
 });
 
 test('Funding modes, private contributions and confirmed-only public progress', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const addGift = async (slug, mode, target, type = 'regular', multiple = true) => {
       const result = await db.query(
@@ -166,7 +166,7 @@ test('Funding modes, private contributions and confirmed-only public progress', 
 });
 
 test('External references are optional, globally unique and private', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gifts = await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Teste A','external-a','house','open',null),
@@ -212,7 +212,7 @@ test('External references are optional, globally unique and private', async () =
 });
 
 test('Persistent idempotency and pending expiration remain private and out of progress', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Meta expiração','meta-expiracao','house','goal',500) returning id`)).rows[0].id;
@@ -269,7 +269,7 @@ test('Persistent idempotency and pending expiration remain private and out of pr
 });
 
 test('Expiration accepts the contribution id and changes only overdue pending rows', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Meta rotina expiração','meta-rotina-expiracao','house','goal',500) returning id`)).rows[0].id;
@@ -329,7 +329,7 @@ test('Expiration accepts the contribution id and changes only overdue pending ro
 });
 
 test('Previously issued Pix confirm above a goal, reconcile once and remain private', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Meta com Pix','meta-com-pix','house','goal',100) returning id`)).rows[0].id;
@@ -466,7 +466,7 @@ test('Corrective migration updates only unissued legacy attempts and preserves t
 });
 
 test('R$1,000 goal admits R$200 from R$900, then closes to new contributions', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Meta de mil','meta-de-mil','house','goal',1000) returning id`)).rows[0].id;

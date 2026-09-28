@@ -7,9 +7,11 @@ const source = await readFile(new URL('../src/lib/gifts/contribution.ts', import
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
 });
-const { createPendingContributionWith, preparePendingContribution } = await import(
+const { createPendingContributionWith: createPendingContributionWithRaw, preparePendingContribution } = await import(
   `data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`
 );
+const createPendingContributionWith = (value, dependencies, environment = 'production') =>
+  createPendingContributionWithRaw(value, dependencies, environment);
 
 const id = '10000000-0000-4000-8000-000000000099';
 const key = '30000000-0000-4000-8000-000000000001';
@@ -29,6 +31,7 @@ const fixed = { ...goal, funding_mode: 'fixed', target_amount: '75.00', gift_typ
 
 function stored(contribution, paymentStatus = 'pending') {
   return {
+    payment_environment: contribution.payment_environment,
     id: '40000000-0000-4000-8000-000000000001',
     gift_id: contribution.gift_id,
     contributor_name: contribution.contributor_name,
@@ -51,6 +54,7 @@ test('goal/open/fixed contributions are normalized without trusting browser mone
   const { idempotency_key, request_fingerprint, ...publicFields } = goalContribution;
   assert.ok(idempotency_key && request_fingerprint);
   assert.deepEqual(publicFields, {
+    payment_environment: 'production',
     gift_id: id,
     contributor_name: 'Pessoa de Teste',
     contributor_phone: '+5511999999999',

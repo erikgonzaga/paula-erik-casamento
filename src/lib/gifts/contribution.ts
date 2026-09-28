@@ -12,6 +12,7 @@ export type ContributionProgressSnapshot = {
 };
 
 export type PendingContribution = {
+  payment_environment: 'test' | 'production';
   idempotency_key: string;
   request_fingerprint: string;
   gift_id: string;
@@ -31,6 +32,7 @@ export type PendingContribution = {
 type PendingContributionBase = Omit<PendingContribution, 'request_fingerprint'>;
 
 export type ExistingContribution = {
+  payment_environment: 'test' | 'production' | null;
   id: string;
   gift_id: string;
   contributor_name: string;
@@ -41,7 +43,7 @@ export type ExistingContribution = {
   expires_at: string;
 };
 
-type NormalizedRequest = Omit<PendingContribution, 'request_fingerprint' | 'amount' | 'payment_status' | 'payment_method' |
+type NormalizedRequest = Omit<PendingContribution, 'payment_environment' | 'request_fingerprint' | 'amount' | 'payment_status' | 'payment_method' |
   'external_reference' | 'confirmed_at' | 'vest_name' | 'regional_division'> & {
     amount: unknown;
     vest_name: string | null;
@@ -159,6 +161,7 @@ function validateRequest(value: unknown): NormalizedRequest {
 function materializeContribution(
   request: NormalizedRequest,
   gift: ContributionGiftSnapshot | null,
+  environment: 'test' | 'production',
 ): PendingContributionBase {
   if (!gift || gift.id !== request.gift_id) {
     throw new GiftContributionError(404, 'gift_unavailable', 'Este presente não está disponível.');
@@ -182,6 +185,7 @@ function materializeContribution(
   }
 
   return {
+    payment_environment: environment,
     idempotency_key: request.idempotency_key,
     gift_id: gift.id,
     contributor_name: request.contributor_name,
@@ -239,9 +243,10 @@ export function preparePendingContribution(
   value: unknown,
   gift: ContributionGiftSnapshot | null,
   progress: ContributionProgressSnapshot | null,
+  environment: 'test' | 'production' = 'production',
 ): PendingContribution {
   const request = validateRequest(value);
-  const contribution = withFingerprint(materializeContribution(request, gift));
+  const contribution = withFingerprint(materializeContribution(request, gift, environment));
   validateContributionAvailability(gift!, progress);
   return contribution;
 }
@@ -254,31 +259,36 @@ export type ContributionDependencies = {
   insert(contribution: PendingContribution): Promise<ExistingContribution>;
 };
 
-function existingResult(existing: ExistingContribution, fingerprint: string) {
+function existingResult(existing: ExistingContribution, fingerprint: string, environment: 'test' | 'production') {
+  if (existing.payment_environment !== environment) {
+    throw new GiftContributionError(409, 'payment_environment_mismatch', 'Esta tentativa não está disponível neste ambiente.');
+  }
   if (existing.request_fingerprint !== fingerprint) {
     throw new GiftContributionError(409, 'idempotency_conflict', 'Esta tentativa já foi utilizada com outros dados. Inicie uma nova contribuição.');
   }
   return { ok: true as const, payment_status: existing.payment_status, contribution: existing };
 }
 
-export async function createPendingContributionWith(value: unknown, dependencies: ContributionDependencies) {
+export async function createPendingContributionWith(
+  value: unknown, dependencies: ContributionDependencies, environment: 'test' | 'production',
+) {
   const request = validateRequest(value);
   const gift = await dependencies.getGift(request.gift_id);
-  const contribution = withFingerprint(materializeContribution(request, gift));
+  const contribution = withFingerprint(materializeContribution(request, gift, environment));
   await dependencies.expirePending(request.idempotency_key);
   const existing = await dependencies.getExisting(request.idempotency_key);
-  if (existing) return existingResult(existing, contribution.request_fingerprint);
+  if (existing) return existingResult(existing, contribution.request_fingerprint, environment);
 
   const progress = gift!.funding_mode === 'goal' ? await dependencies.getProgress(request.gift_id) : null;
   validateContributionAvailability(gift!, progress);
   try {
     const inserted = await dependencies.insert(contribution);
-    return existingResult(inserted, contribution.request_fingerprint);
+    return existingResult(inserted, contribution.request_fingerprint, environment);
   } catch {
     // A concurrent request may have inserted this same key first.
     await dependencies.expirePending(request.idempotency_key);
     const concurrent = await dependencies.getExisting(request.idempotency_key);
-    if (concurrent) return existingResult(concurrent, contribution.request_fingerprint);
+    if (concurrent) return existingResult(concurrent, contribution.request_fingerprint, environment);
 
     // The database trigger is authoritative. Refresh once to translate a race
     // into a useful message without exposing PostgreSQL or PostgREST details.
@@ -286,7 +296,7 @@ export async function createPendingContributionWith(value: unknown, dependencies
     const currentProgress = currentGift?.funding_mode === 'goal'
       ? await dependencies.getProgress(request.gift_id)
       : null;
-    materializeContribution(request, currentGift);
+    materializeContribution(request, currentGift, environment);
     validateContributionAvailability(currentGift!, currentProgress);
     throw new GiftContributionError(503, 'write_failed', 'Não foi possível registrar a contribuição agora. Tente novamente.');
   }

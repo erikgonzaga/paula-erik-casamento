@@ -241,7 +241,7 @@ test('migration preserves historical confirmed payments and quarantines legacy a
 });
 
 test('new attempts receive only one durable POST authorization after a lease expires', async () => {
-  const db = await createDatabase();
+  const db = await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     const gift = (await db.query(`insert into gifts(name,slug,category,funding_mode,target_amount)
       values ('Single POST','single-post-pix','house','goal',1000) returning id`)).rows[0].id;
@@ -278,7 +278,10 @@ test('new attempts receive only one durable POST authorization after a lease exp
 const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 
 async function paymentServiceFixture({ attempt, orderStatus = 'processing', orderDetail = 'in_process', providerError = 0 }) {
+  process.env.PAYMENTS_ENVIRONMENT = 'test';
+  attempt = { payment_environment: 'test', ...attempt };
   const contribution = {
+    payment_environment: 'test',
     id: attempt.contribution_id, gift_id: '70000000-0000-4000-8000-000000000001',
     payment_status: 'pending', contributor_name: 'Test', contributor_email: 'test@example.test',
   };
@@ -286,11 +289,11 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
     export const calls = [];
     export async function database(path) {
       calls.push(path);
-      if (path === 'rpc/claim_gift_payment_attempt') return [${JSON.stringify(attempt)}];
-      if (path === 'rpc/begin_gift_order_submission') return false;
-      if (path === 'rpc/expire_gift_contribution_pending') return 0;
-      if (path === 'rpc/claim_due_gift_payment_reconciliation') return [{ id: ${JSON.stringify(attempt.id)}, contribution_id: ${JSON.stringify(attempt.contribution_id)} }];
-      if (path === 'rpc/reconcile_gift_payment_attempt') return 'pending';
+      if (path === 'rpc/claim_gift_payment_attempt_for_environment') return [${JSON.stringify(attempt)}];
+      if (path === 'rpc/begin_gift_order_submission_for_environment') return false;
+      if (path === 'rpc/expire_gift_contribution_pending_for_environment') return 0;
+      if (path === 'rpc/claim_due_gift_payment_reconciliation_for_environment') return [{ id: ${JSON.stringify(attempt.id)}, contribution_id: ${JSON.stringify(attempt.contribution_id)} }];
+      if (path === 'rpc/reconcile_gift_payment_attempt_for_environment') return 'pending';
       if (path.startsWith('gift_contributions?')) return [${JSON.stringify(contribution)}];
       if (path.startsWith('payment_attempts?')) return [${JSON.stringify(attempt)}];
       if (path.startsWith('gifts?')) return [{ id: ${JSON.stringify(contribution.gift_id)}, name: 'Test gift' }];
@@ -380,7 +383,7 @@ test('provider timeout, 429 and 503 defer the job without financial reconciliati
     const fixture = await paymentServiceFixture({ attempt, providerError });
     assert.deepEqual(await fixture.service.reconcilePendingGiftPaymentsBatch(),
       { expiredUnsent: 0, selected: 1, reconciled: 0, deferred: 1 });
-    assert.ok(!fixture.database.calls.includes('rpc/reconcile_gift_payment_attempt'));
+    assert.ok(!fixture.database.calls.includes('rpc/reconcile_gift_payment_attempt_for_environment'));
     assert.deepEqual(fixture.provider.calls, ['GET']);
   }
 });
@@ -402,6 +405,32 @@ test('expired known Order is read and job never creates an Order', async () => {
     { expiredUnsent: 0, selected: 1, reconciled: 1, deferred: 0 });
   assert.deepEqual(fixture.provider.calls, ['GET', 'GET']);
   assert.ok(!fixture.provider.calls.includes('POST'));
+});
+
+test('polling and webhook fail closed for the opposite or unknown payment environment', async () => {
+  const base = {
+    id: key(71), contribution_id: key(72), provider_idempotency_key: key(73),
+    external_reference: `gift-contribution-${key(72)}`,
+    provider_order_id: 'ORD-KNOWN', provider_status: 'processing', amount: 50,
+    expires_at: new Date(Date.now() + 60_000).toISOString(), provider_checked_at: null,
+  };
+  const opposite = await paymentServiceFixture({ attempt: { ...base, payment_environment: 'production' } });
+  await assert.rejects(opposite.service.getGiftPaymentStatus({ idempotency_key: key(74) }),
+    /payment_environment_mismatch/);
+  await assert.rejects(opposite.service.processMercadoPagoOrder('ORD-KNOWN', 'event-one'),
+    /payment_environment_mismatch/);
+  assert.deepEqual(opposite.provider.calls, []);
+  const legacy = await paymentServiceFixture({ attempt: { ...base, payment_environment: null } });
+  await assert.rejects(legacy.service.processMercadoPagoOrder('ORD-KNOWN', 'event-two'),
+    /payment_environment_mismatch/);
+  assert.deepEqual(legacy.provider.calls, []);
+  const reverse = await paymentServiceFixture({ attempt: { ...base, payment_environment: 'test' } });
+  process.env.PAYMENTS_ENVIRONMENT = 'production';
+  try {
+    await assert.rejects(reverse.service.processMercadoPagoOrder('ORD-KNOWN', 'event-three'),
+      /payment_environment_mismatch/);
+    assert.deepEqual(reverse.provider.calls, []);
+  } finally { process.env.PAYMENTS_ENVIRONMENT = 'test'; }
 });
 
 test('private job route fails closed before executing a batch', async () => {

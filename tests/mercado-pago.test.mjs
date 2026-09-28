@@ -247,6 +247,7 @@ test('retry serializes the same item and keeps the same idempotency key', async 
 test('payment service reads the persisted gift and reuses the existing attempt on retry', async () => {
   const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
   const attempt = {
+    payment_environment: 'test',
     id: '60000000-0000-4000-8000-000000000001',
     contribution_id: '40000000-0000-4000-8000-000000000001',
     provider_idempotency_key: '50000000-0000-4000-8000-000000000001',
@@ -259,6 +260,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     can_create: true,
   };
   const contribution = {
+    payment_environment: 'test',
     id: attempt.contribution_id,
     gift_id: giftItem.giftId,
     payment_status: 'pending',
@@ -269,10 +271,10 @@ test('payment service reads the persisted gift and reuses the existing attempt o
     export const queries = [];
     export async function database(path) {
       queries.push(path);
-      if (path === 'rpc/claim_gift_payment_attempt') return [${JSON.stringify(attempt)}];
-      if (path === 'rpc/begin_gift_order_submission') return true;
+      if (path === 'rpc/claim_gift_payment_attempt_for_environment') return [${JSON.stringify(attempt)}];
+      if (path === 'rpc/begin_gift_order_submission_for_environment') return true;
       if (path.startsWith('gifts?select=id,name&id=eq.')) return [{ id: ${JSON.stringify(giftItem.giftId)}, name: ${JSON.stringify(giftItem.giftName)} }];
-      if (path === 'rpc/reconcile_gift_payment_attempt') return 'pending';
+      if (path === 'rpc/reconcile_gift_payment_attempt_for_environment') return 'pending';
       if (path.startsWith('payment_attempts?select=')) return [${JSON.stringify(attempt)}];
       throw new Error('unexpected database query: ' + path);
     }

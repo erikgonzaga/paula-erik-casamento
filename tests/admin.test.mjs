@@ -4,7 +4,7 @@ import { createDatabase } from './database-fixture.mjs';
 import { seedAdmin, adminId, nonadminId } from './admin-fixture.mjs';
 
 test('Admin RLS, explicit authorization, calculations and read-only snapshot',async()=>{
-  const db=await createDatabase();
+  const db=await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     await seedAdmin(db);
     for(const role of ['anon','authenticated']) {
@@ -42,7 +42,7 @@ test('Admin RLS, explicit authorization, calculations and read-only snapshot',as
 });
 
 test('Dashboard empty state, recent limit, cents and persisted pending remain unchanged',async()=>{
-  const db=await createDatabase();
+  const db=await createDatabase({ beforeMigration: '202609270001_payment_environment_isolation.sql' });
   try {
     await db.query('insert into auth.users(id) values ($1)',[adminId]);await db.query('insert into admin_users(user_id) values ($1)',[adminId]);
     let data=(await db.query('select get_admin_dashboard($1) as data',[adminId])).rows[0].data;

@@ -12,8 +12,20 @@ import { database, databaseInsert, databaseUpdate } from '@/lib/supabase/server'
 import { createPendingGiftContribution } from '@/services/gift-contributions';
 
 type ContributionStatus = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
+type PaymentEnvironment = 'test' | 'production';
+
+function paymentEnvironment(): PaymentEnvironment {
+  const value = process.env.PAYMENTS_ENVIRONMENT;
+  if (value !== 'test' && value !== 'production') throw new Error('payment_environment_unavailable');
+  return value;
+}
+
+function assertPaymentEnvironment(value: PaymentEnvironment | null) {
+  if (value !== paymentEnvironment()) throw new Error('payment_environment_mismatch');
+}
 
 type PaymentAttempt = {
+  payment_environment: PaymentEnvironment | null;
   id: string;
   contribution_id: string;
   provider_idempotency_key: string;
@@ -34,6 +46,7 @@ type PaymentAttempt = {
 };
 
 type StoredContribution = {
+  payment_environment: PaymentEnvironment | null;
   id: string;
   gift_id: string;
   payment_status: ContributionStatus;
@@ -54,7 +67,7 @@ export type GiftPaymentResult = {
 };
 
 const attemptSelection = [
-  'id','contribution_id','provider_idempotency_key','external_reference','provider_order_id',
+  'id','contribution_id','payment_environment','provider_idempotency_key','external_reference','provider_order_id',
   'provider_payment_id','provider_status','provider_status_detail','amount','expires_at',
   'pix_qr_code','pix_qr_code_base64','ticket_url','provider_checked_at',
   'order_submission_started_at','order_submission_state',
@@ -97,8 +110,9 @@ function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null
 }
 
 async function claimAttempt(contributionId: string) {
-  const rows = await database<PaymentAttempt[]>('rpc/claim_gift_payment_attempt', {
+  const rows = await database<PaymentAttempt[]>('rpc/claim_gift_payment_attempt_for_environment', {
     p_contribution_id: contributionId,
+    p_environment: paymentEnvironment(),
     p_provider_idempotency_key: randomUUID(),
     p_lease_seconds: 30,
   });
@@ -116,9 +130,11 @@ async function getAttemptByContribution(contributionId: string) {
 }
 
 async function reconcile(attempt: PaymentAttempt, order: MercadoPagoOrder): Promise<ContributionStatus> {
+  assertPaymentEnvironment(attempt.payment_environment);
   assertExpectedOrder(order, { amount: attempt.amount, externalReference: attempt.external_reference });
-  const rows = await database<string>('rpc/reconcile_gift_payment_attempt', {
+  const rows = await database<string>('rpc/reconcile_gift_payment_attempt_for_environment', {
     p_attempt_id: attempt.id,
+    p_environment: paymentEnvironment(),
     p_provider_order_id: order.id,
     p_provider_payment_id: order.payment?.id ?? null,
     p_provider_status: order.status,
@@ -135,6 +151,7 @@ async function reconcile(attempt: PaymentAttempt, order: MercadoPagoOrder): Prom
 }
 
 async function refreshAttempt(attempt: PaymentAttempt) {
+  assertPaymentEnvironment(attempt.payment_environment);
   if (!attempt.provider_order_id) return { attempt, status: null as ContributionStatus | null };
   const order = await getOrder(attempt.provider_order_id);
   const status = await reconcile(attempt, order);
@@ -142,6 +159,8 @@ async function refreshAttempt(attempt: PaymentAttempt) {
 }
 
 async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredContribution) {
+  assertPaymentEnvironment(attempt.payment_environment);
+  assertPaymentEnvironment(contribution.payment_environment);
   const gifts = await database<Array<{ id: string; name: string }>>(
     `gifts?select=id,name&id=eq.${encodeURIComponent(contribution.gift_id)}&limit=1`,
   );
@@ -155,8 +174,9 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
   }
   // The database makes the deadline decision while holding the contribution
   // lock and records that a request may have reached the provider.
-  const maySend = await database<boolean>('rpc/begin_gift_order_submission', {
+  const maySend = await database<boolean>('rpc/begin_gift_order_submission_for_environment', {
     p_attempt_id: attempt.id,
+    p_environment: paymentEnvironment(),
   });
   if (!maySend || isPastDeadline(attempt)) {
     const latest = await claimAttempt(contribution.id);
@@ -181,6 +201,7 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
 export async function createGiftPayment(value: unknown): Promise<GiftPaymentResult> {
   const result = await createPendingGiftContribution(value);
   const contribution = result.contribution;
+  assertPaymentEnvironment(contribution.payment_environment);
   if (result.payment_status !== 'pending') return publicResult(result.payment_status, null);
   const attempt = await claimAttempt(contribution.id);
   if (attempt.provider_order_id) {
@@ -207,13 +228,15 @@ function validateStatusRequest(value: unknown) {
 export async function getGiftPaymentStatus(value: unknown): Promise<GiftPaymentResult> {
   const key = validateStatusRequest(value);
   const contributions = await database<StoredContribution[]>(
-    `gift_contributions?select=id,gift_id,payment_status,contributor_name,contributor_email&idempotency_key=eq.${encodeURIComponent(key)}&limit=1`,
+    `gift_contributions?select=id,gift_id,payment_status,payment_environment,contributor_name,contributor_email&idempotency_key=eq.${encodeURIComponent(key)}&limit=1`,
   );
   if (!Array.isArray(contributions) || contributions.length !== 1) {
     throw new GiftContributionError(404, 'payment_not_found', 'Não encontramos esta tentativa de pagamento.');
   }
   const contribution = contributions[0];
+  assertPaymentEnvironment(contribution.payment_environment);
   let attempt = await getAttemptByContribution(contribution.id);
+  if (attempt) assertPaymentEnvironment(attempt.payment_environment);
   let status = contribution.payment_status;
   if (status === 'pending' && !attempt?.provider_order_id) {
     const claimed = await claimAttempt(contribution.id);
@@ -243,6 +266,9 @@ async function getAttemptByOrder(orderId: string) {
 }
 
 export async function processMercadoPagoOrder(orderId: string, eventKey: string) {
+  const attempt = await getAttemptByOrder(orderId);
+  if (!attempt) throw new Error('payment_attempt_not_found');
+  assertPaymentEnvironment(attempt.payment_environment);
   const existing = await database<Array<{ id: string; processed_at: string | null }>>(
     `payment_webhook_events?select=id,processed_at&provider=eq.mercado_pago&event_key=eq.${eventKey}&limit=1`,
   );
@@ -265,8 +291,6 @@ export async function processMercadoPagoOrder(orderId: string, eventKey: string)
   }
   if (!eventId) throw new Error('webhook_event_unavailable');
 
-  const attempt = await getAttemptByOrder(orderId);
-  if (!attempt) throw new Error('payment_attempt_not_found');
   const order = await getOrder(orderId);
   await reconcile(attempt, order);
   await databaseUpdate(`payment_webhook_events?id=eq.${encodeURIComponent(eventId)}`, {
@@ -276,12 +300,14 @@ export async function processMercadoPagoOrder(orderId: string, eventKey: string)
 }
 
 export async function reconcilePendingGiftPaymentsBatch() {
-  const expiredUnsent = await database<number>('rpc/expire_gift_contribution_pending', {
+  const environment = paymentEnvironment();
+  const expiredUnsent = await database<number>('rpc/expire_gift_contribution_pending_for_environment', {
     p_idempotency_key: null,
+    p_environment: environment,
   });
   const candidates = await database<Array<{ id: string; contribution_id: string }>>(
-    'rpc/claim_due_gift_payment_reconciliation',
-    { p_limit: 10, p_lease_seconds: 120 },
+    'rpc/claim_due_gift_payment_reconciliation_for_environment',
+    { p_environment: environment, p_limit: 10, p_lease_seconds: 120 },
   );
   if (!Array.isArray(candidates) || candidates.length > 10) {
     throw new Error('invalid_reconciliation_batch');

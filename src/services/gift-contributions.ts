@@ -9,6 +9,12 @@ import {
 } from '@/lib/gifts/contribution';
 import { database, databaseInsert } from '@/lib/supabase/server';
 
+function paymentEnvironment(): 'test' | 'production' {
+  const value = process.env.PAYMENTS_ENVIRONMENT;
+  if (value !== 'test' && value !== 'production') throw new Error('payment_environment_unavailable');
+  return value;
+}
+
 const giftSelection = 'id,active,funding_mode,target_amount,gift_type';
 
 async function getGift(id: string): Promise<ContributionGiftSnapshot | null> {
@@ -19,7 +25,9 @@ async function getGift(id: string): Promise<ContributionGiftSnapshot | null> {
 }
 
 async function getProgress(id: string): Promise<ContributionProgressSnapshot | null> {
-  const rows = await database<Array<ContributionProgressSnapshot & { gift_id: string }>>('rpc/get_gift_progress');
+  const rows = await database<Array<ContributionProgressSnapshot & { gift_id: string }>>(
+    'rpc/get_gift_progress_for_environment', { p_environment: paymentEnvironment() },
+  );
   if (!Array.isArray(rows)) return null;
   const progress = rows.find(row => row.gift_id === id);
   return progress ? { remaining_amount: progress.remaining_amount, goal_reached: progress.goal_reached } : null;
@@ -27,7 +35,7 @@ async function getProgress(id: string): Promise<ContributionProgressSnapshot | n
 
 async function insert(contribution: PendingContribution) {
   const rows = await databaseInsert<ExistingContribution[]>(
-    'gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,amount,contributor_email,expires_at',
+    'gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,payment_environment,amount,contributor_email,expires_at',
     contribution,
   );
   if (!Array.isArray(rows) || rows.length !== 1) throw new Error('contribution_insert_failed');
@@ -35,16 +43,18 @@ async function insert(contribution: PendingContribution) {
 }
 
 async function expirePending(idempotencyKey: string) {
-  await database<number>('rpc/expire_gift_contribution_pending', { p_idempotency_key: idempotencyKey });
+  await database<number>('rpc/expire_gift_contribution_pending_for_environment', {
+    p_idempotency_key: idempotencyKey, p_environment: paymentEnvironment(),
+  });
 }
 
 async function getExisting(idempotencyKey: string): Promise<ExistingContribution | null> {
   const rows = await database<ExistingContribution[]>(
-    `gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,amount,contributor_email,expires_at&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
+    `gift_contributions?select=id,gift_id,contributor_name,request_fingerprint,payment_status,payment_environment,amount,contributor_email,expires_at&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
   );
   return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
 }
 
 export function createPendingGiftContribution(value: unknown) {
-  return createPendingContributionWith(value, { getGift, getProgress, expirePending, getExisting, insert });
+  return createPendingContributionWith(value, { getGift, getProgress, expirePending, getExisting, insert }, paymentEnvironment());
 }
