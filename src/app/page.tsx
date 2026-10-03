@@ -28,7 +28,7 @@ const chapters = [
 export default function Home() {
   return <><a className="skip-link" href="#conteudo">Pular para o conteúdo</a><Navigation /><main id="conteudo">
     <section id="inicio" className="hero section-shell">
-      <div className="hero-copy"><p className="eyebrow"><span className="short-line" /> UMA VIDA. UMA CAMINHADA.</p><h1 className="hero-brand"><WeddingLogo size="hero" /></h1><p className="hero-intro">A nossa história começou em uma trilha.<br />O próximo passo, queremos dar com você.</p><div className="hero-actions"><a className="button primary" href="/rsvp">Confirmar presença <ArrowUpRightIcon /></a><a className="text-link" href="/presentes">Lista de presentes <ArrowUpRightIcon /></a></div></div>
+      <div className="hero-copy"><p className="eyebrow"><span className="short-line" /> UMA VIDA. UMA CAMINHADA.</p><h1 className="hero-brand"><WeddingLogo size="hero" /></h1><p className="hero-intro">A nossa história começou em uma trilha.<br />O próximo passo, queremos dar com você.</p><div className="hero-actions"><a className="text-link" href="/rsvp">Confirmar presença <ArrowUpRightIcon /></a><a className="button primary" href="/presentes">Lista de presentes <ArrowUpRightIcon /></a></div></div>
       <div className="hero-image-wrap"><span className="image-kicker">DESDE O PRIMEIRO ENCONTRO</span><Photo className="hero-photo" caption="O nosso lugar é juntos" /><span className="image-date">23.01.2023 · O INÍCIO DA NOSSA HISTÓRIA</span></div>
       <div className="hero-bottom"><a href="#historia" className="scroll-link"><ArrowDownIcon /> Conheça nossa caminhada</a><span className="handwritten">caminhando juntos</span></div>
     </section>
