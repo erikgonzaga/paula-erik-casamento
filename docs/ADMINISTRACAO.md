@@ -44,6 +44,12 @@ Consultas de acesso: GET `admin_users?select=active&user_id=eq.<uuid>&limit=1`, 
 
 ## Métricas e escopos
 
+### Respostas nominais de RSVP
+
+`/admin/rsvp` é uma página somente leitura que usa a mesma sessão administrativa de `/admin`. A migration local `202610040001_admin_rsvp_details.sql` cria `get_admin_rsvp_details(uuid)` separada do dashboard: a função confirma o admin ativo e devolve apenas convidados ativos de grupos ativos não-demo, com status individual e dados do RSVP associados pelo ID do grupo. A função é `STABLE`, `SECURITY INVOKER`, possui `search_path` vazio e só pode ser executada por `service_role`.
+
+Os filtros Todos, Confirmados, Recusados e Pendentes são aplicados no servidor. A coluna Telefone usa `guests.phone` para cada adulto; crianças e adultos sem telefone exibem `—`. O campo legado `rsvps.phone` não é usado como fallback para evitar atribuir o mesmo número a membros diferentes. Data da resposta, restrições e observações vêm de `rsvps` e aparecem como `—` quando não existe resposta; o status de presença vem sempre de `guests.attendance_status`. Esta página não modifica o fluxo público nem consulta o Supabase pelo navegador. A migration ainda precisa de revisão e aplicação manual no Supabase antes de publicar a rota.
+
 | Bloco | Regra |
 | --- | --- |
 | Convidados | Pessoas ativas, em grupos ativos e não DEMO; total, adultos, crianças, confirmados, recusados e pendentes. |

@@ -8,3 +8,22 @@ export type Dashboard = {
   goals: { id: string; name: string; category: string; target_amount: number; raised: number; percentage: number; remaining: number }[];
   recent: { id: string; contributor_name: string; gift_name: string; amount: number; payment_status: string; created_at: string }[];
 };
+
+export type AdminRsvpGuest = {
+  id: string;
+  name: string;
+  type: 'adult' | 'child';
+  attendance_status: 'confirmed' | 'declined' | 'pending';
+  group_id: string;
+  group_name: string;
+  phone: string | null;
+  submitted_at: string | null;
+  dietary_restrictions: string | null;
+  notes: string | null;
+};
+
+export type AdminRsvpDetails = {
+  generated_at: string;
+  summary: Record<'total' | 'confirmed' | 'declined' | 'pending', number>;
+  guests: AdminRsvpGuest[];
+};

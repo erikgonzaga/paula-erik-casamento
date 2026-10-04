@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { AdminError } from '@/lib/admin/auth';
 import { getAdminDashboard } from '@/services/admin-dashboard';
 import type { Dashboard } from '@/lib/admin/types';
+import { ArrowRightIcon } from '@/components/icons';
 import { LogoutButton } from './session-controls';
 import styles from './admin.module.css';
 
@@ -32,6 +33,7 @@ export default async function AdminPage() {
       <p>Convidados ativos em grupos ativos. Convites de demonstração não entram nestes números.</p>
       <Stats items={[[ 'Convidados',guests.total],['Adultos',guests.adults],['Crianças',guests.children],['Confirmados',guests.confirmed],['Recusados',guests.declined],['Pendentes',guests.pending]]} />
       <Stats items={[[ 'Grupos / convites',groups.total],['Grupos que responderam',groups.responded],['Grupos sem resposta',groups.unanswered]]} />
+      <p className={styles.note}><a className={styles.rsvpLink} href="/admin/rsvp">Ver respostas dos convidados <ArrowRightIcon /></a></p>
       {groups.total === 0 && <p className={styles.note}>Nenhum convite ativo disponível.</p>}
     </section>
     <section className={styles.section} aria-labelledby="gifts"><h2 id="gifts">Presentes ativos</h2>

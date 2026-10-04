@@ -13,16 +13,19 @@ export async function seedAdmin(db) {
     ('Boletos locais','boletos-locais','party','open',null,'regular',true),
     ('Insano local','insano-local','insanos','fixed',25,'insanos',true),
     ('Meta histórica','meta-historica','house','goal',200,'regular',true) returning id`)).rows.map(r=>r.id);
+  const hasPaymentEnvironment=(await db.query("select 1 from information_schema.columns where table_schema='public' and table_name='gift_contributions' and column_name='payment_environment'")).rows.length>0;
+  const environmentColumn=hasPaymentEnvironment?',payment_environment':'';
+  const environmentValue=hasPaymentEnvironment?",'production'":'';
   for (const [index,amount,status] of [[0,40,'confirmed'],[0,10,'pending'],[0,5,'expired'],[1,300,'confirmed'],[2,25,'confirmed'],[3,50,'confirmed'],[1,2,'failed'],[1,2,'cancelled']]) {
-    await db.query(`insert into gift_contributions(gift_id,contributor_name,amount,payment_status,payment_method,confirmed_at,vest_name,idempotency_key,request_fingerprint)
-    values ($1,'Pessoa de teste',$2,$3,'pix',case when $3='confirmed' then now() else null end,'Colete de teste',gen_random_uuid(),repeat('a',64))`,[giftIds[index],amount,status]);
+    await db.query(`insert into gift_contributions(gift_id,contributor_name,amount,payment_status,payment_method,confirmed_at,vest_name,idempotency_key,request_fingerprint${environmentColumn})
+    values ($1,'Pessoa de teste',$2,$3,'pix',case when $3='confirmed' then now() else null end,'Colete de teste',gen_random_uuid(),repeat('a',64)${environmentValue})`,[giftIds[index],amount,status]);
   }
   await db.query('update gifts set active=false where id=$1',[giftIds[3]]);
   const group=(await db.query(`insert into invitation_groups(name,slug,code) values ('Grupo de teste',$1,$2) returning id`,[randomUUID(),randomUUID().replaceAll('-','').toUpperCase()])).rows[0].id;
-  await db.query(`insert into guests(invitation_group_id,name,type,attendance_status,active) values
-    ($1,'Adulto 1','adult','confirmed',true),($1,'Criança','child','pending',true),
-    ($1,'Adulto 2','adult','declined',true),($1,'Inativo','adult','pending',false)`,[group]);
-  await db.query('insert into rsvps(invitation_group_id) values ($1)',[group]);
+  await db.query(`insert into guests(invitation_group_id,name,type,attendance_status,active,phone) values
+    ($1,'Adulto 1','adult','confirmed',true,'11911111111'),($1,'Criança','child','pending',true,null),
+    ($1,'Adulto 2','adult','declined',true,'11922222222'),($1,'Inativo','adult','pending',false,null)`,[group]);
+  await db.query("insert into rsvps(invitation_group_id,phone) values ($1,'11999990000')",[group]);
   return giftIds;
 }
 
@@ -66,6 +69,9 @@ export async function adminFixture(port=54331) {
       } else if(url.pathname.endsWith('/rpc/get_admin_dashboard')) {
         if(failDashboard || req.headers.apikey!=='test-service-role') throw Error('unavailable');
         result=(await db.query('select get_admin_dashboard($1) as data',[url.searchParams.get('p_user_id')])).rows[0].data;
+      } else if(url.pathname.endsWith('/rpc/get_admin_rsvp_details')) {
+        if(req.headers.apikey!=='test-service-role') throw Error('unavailable');
+        result=(await db.query('select get_admin_rsvp_details($1) as data',[url.searchParams.get('p_user_id')])).rows[0].data;
       } else if(url.pathname.endsWith('/gifts') || url.pathname.endsWith('/rpc/get_gift_progress')) {
         if(!['test-anon-key','test-service-role'].includes(req.headers.apikey)) throw Error('key');
         result=(await db.query(url.pathname.endsWith('/gifts')?'select * from gifts where active order by display_order,id':'select * from get_gift_progress()')).rows;
