@@ -34,7 +34,8 @@ export async function adminFixture(port=54331) {
   const db=await createDatabase(); await seedAdmin(db);
   const fallback=await fixtureServer(db,0);
   const fallbackUrl=`http://127.0.0.1:${fallback.address().port}`;
-  const tokens=new Map(); const calls=[]; let failDashboard=false;
+  const tokens=new Map(); const calls=[]; const recoveryCodes=new Map();
+  let failDashboard=false; let adminPassword='local-test-password';
   const server=createServer(async(req,res)=>{
     res.setHeader('Content-Type','application/json');
     try {
@@ -45,15 +46,42 @@ export async function adminFixture(port=54331) {
       let result;
       if(url.pathname.startsWith('/auth/v1/')) {
         if(req.headers.apikey!=='test-anon-key') throw Error('key');
-        if(url.pathname.endsWith('/token')) {
-          if(body.password!=='local-test-password') {res.writeHead(400);res.end('{}');return;}
+        if(url.pathname.endsWith('/recover')) {
+          if(body.email==='admin@example.test' || body.email==='other@example.test') {
+            const code=randomUUID();
+            recoveryCodes.set(body.email,{code,challenge:body.code_challenge,method:body.code_challenge_method,
+              redirectTo:url.searchParams.get('redirect_to'),userId:body.email==='admin@example.test'?adminId:nonadminId});
+          }
+          result={};
+        } else if(url.pathname.endsWith('/token')) {
+          let id;
+          if(url.searchParams.get('grant_type')==='pkce') {
+            const recovery=[...recoveryCodes.values()].find(entry=>entry.code===body.auth_code);
+            if(!recovery || recovery.challenge!==createHash('sha256').update(body.code_verifier||'').digest('base64url')) {
+              res.writeHead(400);res.end('{}');return;
+            }
+            recoveryCodes.delete([...recoveryCodes].find(([,entry])=>entry===recovery)[0]);
+            id=recovery.userId;
+          } else {
+            if(body.password!==(body.email==='admin@example.test'?adminPassword:'local-test-password')) {
+              res.writeHead(400);res.end('{}');return;
+            }
+            id=body.email==='admin@example.test'?adminId:nonadminId;
+          }
           const access_token=`synthetic-${randomUUID()}`;
-          const id=body.email==='admin@example.test'?adminId:nonadminId;
           tokens.set(access_token,id);result={access_token,expires_in:3600,user:{id}};
         } else {
           const token=req.headers.authorization?.replace('Bearer ','');
           if(!tokens.has(token)){res.writeHead(401);res.end('{}');return;}
-          if(url.pathname.endsWith('/logout')) {tokens.delete(token);res.writeHead(204);res.end();return;}
+          if(url.pathname.endsWith('/logout')) {
+            if(url.searchParams.get('scope')==='global') {
+              const userId=tokens.get(token);
+              for(const [value,id] of tokens) if(id===userId)tokens.delete(value);
+            } else tokens.delete(token);
+            res.writeHead(204);res.end();return;
+          }
+          if(url.pathname.endsWith('/user') && req.method==='PUT') {adminPassword=body.password;result={id:tokens.get(token)};}
+          else
           result={id:tokens.get(token)};
         }
       } else if(url.pathname.endsWith('/admin_users')) {
@@ -63,6 +91,20 @@ export async function adminFixture(port=54331) {
         if(req.headers.apikey!=='test-service-role') throw Error('key');
         if(req.method==='POST') {await db.query('insert into admin_sessions(token_hash,user_id,expires_at) values ($1,$2,$3)',[body.token_hash,body.user_id,body.expires_at]);res.writeHead(201);res.end();return;}
         result=(await db.query('select user_id,expires_at from admin_sessions where token_hash=$1',[url.searchParams.get('token_hash').slice(3)])).rows;
+      } else if(url.pathname.endsWith('/admin_password_recovery_sessions')) {
+        if(req.headers.apikey!=='test-service-role') throw Error('key');
+        result=(await db.query('select user_id from admin_password_recovery_sessions where token_hash=$1 and expires_at>now()',
+          [url.searchParams.get('token_hash').slice(3)])).rows;
+      } else if(url.pathname.endsWith('/rpc/consume_invitation_limit')) {
+        result=true;
+      } else if(url.pathname.endsWith('/rpc/register_admin_password_recovery_session')) {
+        if(req.headers.apikey!=='test-service-role') throw Error('key');
+        await db.query('select register_admin_password_recovery_session($1,$2,$3)',
+          [body.p_token_hash,body.p_user_id,body.p_expires_at]);res.writeHead(204);res.end();return;
+      } else if(url.pathname.endsWith('/rpc/consume_admin_password_recovery_session')) {
+        if(req.headers.apikey!=='test-service-role') throw Error('key');
+        result=(await db.query('select consume_admin_password_recovery_session($1,$2) as value',
+          [body.p_token_hash,body.p_user_id])).rows[0].value;
       } else if(url.pathname.endsWith('/rpc/revoke_admin_session')) {
         if(req.headers.apikey!=='test-service-role') throw Error('key');
         await db.query('select revoke_admin_session($1)',[body.p_token_hash]);res.writeHead(204);res.end();return;
@@ -83,7 +125,7 @@ export async function adminFixture(port=54331) {
     }catch{res.writeHead(503);res.end(JSON.stringify({message:'fixture failure'}));}
   });
   await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
-  return {db,server,calls,tokens,setFailure(value){failDashboard=value;},async close(){await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>fallback.close(r))]);await db.close();},
+  return {db,server,calls,tokens,recoveryCodes,setFailure(value){failDashboard=value;},async close(){await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>fallback.close(r))]);await db.close();},
     async sessionFor(id){const token=`synthetic-${randomUUID()}`;tokens.set(token,id);if(id===adminId) await db.query('insert into admin_sessions(token_hash,user_id,expires_at) values ($1,$2,now()+interval \'1 hour\')',[createHash('sha256').update(token).digest('hex'),id]);return `wedding_admin=${token}`;}};
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){await adminFixture();console.log('Admin fixture on loopback :54331 (synthetic data only)');}

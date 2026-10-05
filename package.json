@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/rsvp.test.mjs tests/gifts.test.mjs tests/gift-progress.test.mjs tests/gift-contribution.test.mjs tests/mercado-pago.test.mjs tests/pix-reconciliation.test.mjs tests/admin.test.mjs tests/admin-rsvp.test.mjs tests/payment-environment.test.mjs",
+    "test": "node --test tests/rsvp.test.mjs tests/gifts.test.mjs tests/gift-progress.test.mjs tests/gift-contribution.test.mjs tests/mercado-pago.test.mjs tests/pix-reconciliation.test.mjs tests/admin.test.mjs tests/admin-rsvp.test.mjs tests/admin-recovery.test.mjs tests/payment-environment.test.mjs",
     "test:admin:http": "node --test tests/admin-http.test.mjs",
     "test:http": "node --test tests/http.test.mjs",
     "test:fixture": "node tests/serve-fixture.mjs"

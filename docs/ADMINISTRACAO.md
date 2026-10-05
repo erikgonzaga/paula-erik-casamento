@@ -16,6 +16,12 @@ Essa revogação adicional evita reutilização da sessão do painel durante a v
 
 ## Autorização e proteção
 
+### Recuperação de senha
+
+`/admin/login` oferece “Esqueci minha senha”. O pedido em `/admin/recovery` usa o Auth REST com PKCE S256 e resposta genérica; o verifier fica por 15 minutos em cookie HttpOnly. O link deve ser aberto no mesmo navegador/perfil do pedido. Após o callback, o servidor confirma o usuário no Auth e seu vínculo ativo em `admin_users`, cria uma sessão de recuperação de uso único por até 10 minutos e grava somente o SHA-256 do token no banco. A nova senha exige 12–128 caracteres, maiúscula, minúscula, número e símbolo. O consumo do token revoga todas as sessões do painel, a troca solicita logout global do Auth e leva ao login sem autenticação automática.
+
+O arquivo local `202609290001_admin_password_recovery.sql` recompõe o histórico da migration já aplicada manualmente no Supabase remoto; **não reaplicá-la**. Para produção, configurar `APP_ORIGIN=https://paulaeerik.com.br`, Site URL e Redirect URL `https://paulaeerik.com.br/admin/recovery/callback` no Supabase Auth, e usar `{{ .ConfirmationURL }}` no template Reset Password. Localmente, usar `APP_ORIGIN=http://localhost:3000` e o callback correspondente na lista de Redirect URLs. Nenhum redirect do recovery depende de `vercel.app`.
+
 `getAdminDashboard()` chama `requireAdmin()` em toda requisição, antes de buscar o resumo. O guard verifica o token no Auth, `admin_users.active=true`, a existência do hash da sessão, o vínculo ao mesmo usuário e a expiração. Não confia em ID vindo do navegador, metadados de usuário, JWT apenas decodificado, cookie de convite ou middleware. Não foi necessário criar proxy/middleware.
 
 - Sem sessão válida: redirecionamento para login com aviso de sessão indisponível/expirada.
