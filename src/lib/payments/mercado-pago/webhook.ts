@@ -12,6 +12,13 @@ export function validateMercadoPagoWebhook(request: Request) {
   const type = url.searchParams.get('type');
   const requestId = request.headers.get('x-request-id');
   const signature = request.headers.get('x-signature');
+  console.info('[mercado-pago-webhook]', {
+    hasSecret: Boolean(secret),
+    hasRequestId: Boolean(requestId),
+    hasSignature: Boolean(signature),
+    hasDataId: Boolean(dataId),
+    type,
+  });
   if (!secret) {
     throw new MercadoPagoWebhookError('configuration');
   }
@@ -30,6 +37,10 @@ export function validateMercadoPagoWebhook(request: Request) {
       toleranceSeconds: 300,
     });
   } catch {
+    console.warn('[mercado-pago-webhook]', {
+      stage: 'signature-validation',
+      valid: false,
+    });
     throw new MercadoPagoWebhookError('invalid_signature');
   }
   const eventKey = createHash('sha256')
