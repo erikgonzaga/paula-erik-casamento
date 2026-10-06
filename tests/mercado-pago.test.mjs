@@ -502,17 +502,17 @@ test('non-2xx Supabase response preserves safe fields without logging the servic
   }
 });
 
-test('webhook passes original Order data.id and x-request-id to the official SDK', () => {
+test('webhook normalizes uppercase Order data.id only for signature validation', () => {
   const dataId = 'ORDTST01ABC123456789';
   const requestId = 'Request-TEST-1';
   const timestamp = Math.floor(Date.now() / 1000);
-  const manifest = `id:${dataId};request-id:${requestId};ts:${timestamp};`;
+  const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`;
   const hash = createHmac('sha256', process.env.MERCADO_PAGO_WEBHOOK_SECRET).update(manifest).digest('hex');
   const signature = `ts=${timestamp},v1=${hash}`;
   assert.doesNotThrow(() => WebhookSignatureValidator.validate({
     xSignature: signature,
     xRequestId: requestId,
-    dataId,
+    dataId: dataId.toLowerCase(),
     secret: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
     toleranceSeconds: 300,
   }));
@@ -525,7 +525,7 @@ test('webhook passes original Order data.id and x-request-id to the official SDK
   assert.deepEqual(validationCalls.at(-1), {
     xSignature: signature,
     xRequestId: requestId,
-    dataId,
+    dataId: dataId.toLowerCase(),
     secret: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
     toleranceSeconds: 300,
   });
@@ -539,7 +539,7 @@ test('webhook passes original Order data.id and x-request-id to the official SDK
   assert.equal(realShapeResult.eventKey, result.eventKey);
 
   const incorrectlySigned = createHmac('sha256', process.env.MERCADO_PAGO_WEBHOOK_SECRET)
-    .update(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`).digest('hex');
+    .update(`id:${dataId};request-id:${requestId};ts:${timestamp};`).digest('hex');
   const mismatch = new Request(
     `https://example.test/api/payments/mercado-pago/webhook?data.external_reference=${response.external_reference}&data.id=${dataId}&type=order`,
     { method: 'POST', headers: { 'x-request-id': requestId, 'x-signature': `ts=${timestamp},v1=${incorrectlySigned}` } },
@@ -558,7 +558,7 @@ test('webhook route processes only an SDK-validated notification and rejects inv
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = manifest => `ts=${timestamp},v1=${createHmac('sha256', process.env.MERCADO_PAGO_WEBHOOK_SECRET)
     .update(manifest).digest('hex')}`;
-  const signature = sign(`id:${dataId};request-id:${requestId};ts:${timestamp};`);
+  const signature = sign(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`);
   const baseUrl = 'https://example.test/api/payments/mercado-pago/webhook?type=order';
   const makeRequest = (url, headers) => new Request(url, { method: 'POST', headers });
   processedCalls.length = 0;
@@ -571,7 +571,7 @@ test('webhook route processes only an SDK-validated notification and rejects inv
 
   const invalidCases = [
     ['invalid signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': `ts=${timestamp},v1=${'0'.repeat(64)}` }],
-    ['lowercase-only signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': sign(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${timestamp};`) }],
+    ['uppercase-only signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId, 'x-signature': sign(`id:${dataId};request-id:${requestId};ts:${timestamp};`) }],
     ['missing x-signature', `${baseUrl}&data.id=${dataId}`, { 'x-request-id': requestId }],
     ['missing x-request-id', `${baseUrl}&data.id=${dataId}`, { 'x-signature': sign(`id:${dataId};ts:${timestamp};`) }],
     ['missing data.id', baseUrl, { 'x-request-id': requestId, 'x-signature': signature }],

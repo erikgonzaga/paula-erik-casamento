@@ -28,11 +28,12 @@ export function validateMercadoPagoWebhook(request: Request) {
   if (!requestId?.trim()) {
     throw new MercadoPagoWebhookError('invalid_notification');
   }
+  const signatureDataId = dataId.toLowerCase();
   try {
     WebhookSignatureValidator.validate({
       xSignature: signature,
       xRequestId: requestId,
-      dataId,
+      dataId: signatureDataId,
       secret,
       toleranceSeconds: 300,
     });
