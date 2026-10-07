@@ -15,7 +15,7 @@ async function find(field: 'code'|'slug'|'id', value: string): Promise<Group> {
 }
 export function findInvitationByCode(code: string) {
   const normalizedCode = code.trim().toUpperCase();
-  if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{20,64})$/.test(normalizedCode)) throw new InvitationError(404,'Não encontramos este convite. Confira o código e tente novamente.');
+  if (!/^(?:[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}|[A-Z0-9]{20,64})$/.test(normalizedCode)) throw new InvitationError(404,'Não encontramos este convite. Confira o código e tente novamente.');
   return database<Group[]>(`invitation_groups?select=${selection}&code=eq.${encodeURIComponent(normalizedCode)}&limit=1`).then(rows=>validateGroup(rows[0]));
 }
 export function findInvitationBySlug(slug: string) {

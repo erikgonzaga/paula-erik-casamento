@@ -13,14 +13,14 @@ export async function createDatabase({ beforeMigration } = {}){
  for(const migration of (await readdir(migrationsDir)).filter(file=>file.endsWith('.sql') && (!beforeMigration || file < beforeMigration)).sort()) await db.exec(await readFile(new URL(migration,migrationsDir),'utf8'));
  let seed=await readFile(new URL('../supabase/seed.sql',import.meta.url),'utf8');
  if(beforeMigration && beforeMigration <= '202610070001_short_invitation_codes.sql') {
-  seed=seed.replace("'ABC123'","'6D88EECF1CDEA14190ABA9B50B63DBA3'")
-   .replace("'DEF456'","'A93E7062C84F15B9D620'").replace("'GHI789'","'B41F893A620D75E9C038'");
+  seed=seed.replace("'ABC234'","'6D88EECF1CDEA14190ABA9B50B63DBA3'")
+   .replace("'DEF567'","'A93E7062C84F15B9D620'").replace("'GHJ789'","'B41F893A620D75E9C038'");
  }
  await db.exec(seed);
  return db;
 }
 export const ids={silva:'10000000-0000-4000-8000-000000000001',oliveira:'10000000-0000-4000-8000-000000000002'};
-export const codes={silva:'ABC123',oliveira:'DEF456',inactive:'GHI789'};
+export const codes={silva:'ABC234',oliveira:'DEF567',inactive:'GHJ789'};
 export const slugs={silva:'demo-familia-silva-6d88eecf1cdea14190aba9b50b63dba3'};
 export async function fixtureServer(db,port=54329){
  // TEST ADAPTER ONLY. The production app always connects to Supabase REST.

@@ -21,8 +21,8 @@ export async function seedAdmin(db) {
     values ($1,'Pessoa de teste',$2,$3,'pix',case when $3='confirmed' then now() else null end,'Colete de teste',gen_random_uuid(),repeat('a',64)${environmentValue})`,[giftIds[index],amount,status]);
   }
   await db.query('update gifts set active=false where id=$1',[giftIds[3]]);
-  const shortCodes=(await db.query("select 1 from pg_constraint where conname='invitation_groups_code_check' and pg_get_constraintdef(oid) like '%{6}%'" )).rows.length > 0;
-  const group=(await db.query(`insert into invitation_groups(name,slug,code) values ('Grupo de teste',$1,$2) returning id`,[randomUUID(),randomUUID().replaceAll('-','').toUpperCase().slice(0,shortCodes?6:32)])).rows[0].id;
+  const shortCodes=(await db.query("select 1 from pg_constraint where conrelid='invitation_groups'::regclass and contype='c' and pg_get_constraintdef(oid) like '%{6}%'" )).rows.length > 0;
+  const group=(await db.query(`insert into invitation_groups(name,slug,code) values ('Grupo de teste',$1,$2) returning id`,[randomUUID(),shortCodes?'ADM234':randomUUID().replaceAll('-','').toUpperCase()])).rows[0].id;
   await db.query(`insert into guests(invitation_group_id,name,type,attendance_status,active,phone) values
     ($1,'Adulto 1','adult','confirmed',true,'11911111111'),($1,'Criança','child','pending',true,null),
     ($1,'Adulto 2','adult','declined',true,'11922222222'),($1,'Inativo','adult','pending',false,null)`,[group]);

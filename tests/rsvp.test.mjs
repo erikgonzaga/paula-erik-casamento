@@ -30,6 +30,37 @@ test('Short invitation code migration preserves answered RSVPs and all relations
  } finally {await db.close();}
 });
 
+test('Unambiguous rotation changes every code once and preserves answered RSVP data',async()=>{
+ const migration='202610070002_rotate_unambiguous_invitation_codes.sql';
+ const db=await createDatabase({beforeMigration:migration});
+ try {
+  // Include groups already using allowed characters: they must rotate too.
+  await db.query("insert into rsvps(invitation_group_id,notes) values ($1,'Resposta preservada')",[ids.silva]);
+  await db.query("update guests set attendance_status='confirmed',phone='11999990001' where invitation_group_id=$1 and type='adult'",[ids.silva]);
+  const snapshot=async()=>({
+   groups:(await db.query("select to_jsonb(g)-'code' as data from invitation_groups g order by id")).rows,
+   guests:(await db.query('select * from guests order by id')).rows,
+   rsvps:(await db.query('select * from rsvps order by id')).rows,
+  });
+  const before=await snapshot();
+  const oldCodes=(await db.query('select code from invitation_groups order by id')).rows.map(row=>row.code);
+  const sql=await readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8');
+  await db.exec(sql);
+  assert.deepEqual(await snapshot(),before);
+  const codes=(await db.query('select code from invitation_groups order by id')).rows.map(row=>row.code);
+  assert.equal(codes.length,oldCodes.length);
+  assert.ok(codes.every(code=>code.length===6 && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/.test(code)));
+  assert.ok(codes.every(code=>!/[ILO01]/.test(code) && !oldCodes.includes(code)));
+  assert.equal(new Set(codes).size,codes.length);
+  await db.exec(sql);
+  assert.deepEqual((await db.query('select code from invitation_groups order by id')).rows.map(row=>row.code),codes);
+  for(const invalid of ['ABCDE','ABCDEFG','abc234','ABCI23','ABCL23','ABCO23','ABC023','ABC123'])
+   await assert.rejects(db.query('update invitation_groups set code=$1 where id=$2',[invalid,ids.silva]));
+  await assert.rejects(db.query('update invitation_groups set code=$1 where id=$2',[codes[0],ids.oliveira]));
+  assert.deepEqual(await snapshot(),before);
+ } finally {await db.close();}
+});
+
 test('Invitation lookup temporarily accepts legacy and short codes while the database authorizes access',async()=>{
  let source=await readFile(new URL('../src/services/invitations.ts',import.meta.url),'utf8');
  source=source.replace("import 'server-only';",'').replace("import { database } from '@/lib/supabase/server';",'const database=globalThis.__shortCodeDatabase;')
@@ -39,15 +70,15 @@ test('Invitation lookup temporarily accepts legacy and short codes while the dat
  globalThis.__shortCodeDatabase=async path=>{calls.push(path);return path.includes('code=eq.ZZZ999&')?[]:[{id:ids.silva,active:true}];};
  try {
   const {findInvitationByCode}=await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
-  await findInvitationByCode('ABC123');
-  await findInvitationByCode('  aBc123  ');
-  assert.match(calls[0],/code=eq\.ABC123&/);
+  await findInvitationByCode('ABC234');
+  await findInvitationByCode('  aBc234  ');
+  assert.match(calls[0],/code=eq\.ABC234&/);
   assert.equal(calls[0],calls[1]);
   for(const size of [20,32,64]) {
    await findInvitationByCode('  '+'a'.repeat(size)+'  ');
    assert.ok(calls.at(-1).includes('code=eq.'+'A'.repeat(size)+'&'));
   }
-  for(const code of ['ABCDE','ABCDEFG','ABC-12','ÁBC123','A'.repeat(19),'A'.repeat(65)])
+  for(const code of ['ABCDE','ABCDEFG','ABC-12','ÁBC234','ABCI23','ABCL23','ABCO23','ABC023','ABC123','A'.repeat(19),'A'.repeat(65)])
    assert.throws(()=>findInvitationByCode(code),error=>error.status===404);
   assert.equal(calls.length,5);
   await assert.rejects(findInvitationByCode('ZZZ999'),error=>error.status===404);
