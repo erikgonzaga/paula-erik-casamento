@@ -25,7 +25,14 @@ export function validatePaymentAttemptMethod(value: unknown): PaymentAttemptMeth
   const input = value as Record<string, unknown>;
   if (Object.keys(input).some(key => !['payment_method', 'installments', 'provider_payment_method_id'].includes(key))) return fail();
   const methodId = input.provider_payment_method_id;
-  if (methodId !== null && (typeof methodId !== 'string' || !/^[a-z0-9_]{1,64}$/.test(methodId))) return fail();
+  if (methodId !== null) {
+    if (typeof methodId !== 'string' || methodId !== methodId.trim()) return fail();
+    const characters = Array.from(methodId);
+    if (characters.length < 1 || characters.length > 64 || characters.some(character => {
+      const code = character.codePointAt(0)!;
+      return code <= 31 || (code >= 127 && code <= 159);
+    })) return fail();
+  }
   if (input.payment_method === 'pix' && input.installments === null && methodId === 'pix')
     return { payment_method: 'pix', installments: null, provider_payment_method_id: 'pix' };
   if (input.payment_method === 'external' && input.installments === null)

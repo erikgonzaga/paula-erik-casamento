@@ -46,7 +46,11 @@ alter table public.payment_attempts add constraint payment_attempt_method_metada
   or (payment_method = 'external' and installments is null)
 );
 alter table public.payment_attempts add constraint payment_attempt_method_id_valid check (
-  provider_payment_method_id is null or provider_payment_method_id ~ '^[a-z0-9_]{1,64}$'
+  provider_payment_method_id is null or (
+    length(provider_payment_method_id) between 1 and 64
+    and provider_payment_method_id = btrim(provider_payment_method_id)
+    and provider_payment_method_id !~ '[[:cntrl:]]'
+  )
 );
 
 create function public.guard_payment_attempt_method() returns trigger

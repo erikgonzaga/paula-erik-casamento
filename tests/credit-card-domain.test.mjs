@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import ts from 'typescript';
 import { createDatabase } from './database-fixture.mjs';
 
-const migrationName = '202610080001_credit_card_domain.sql';
+const migrationName = '202610070003_credit_card_domain.sql';
 const migrations = new URL('../supabase/migrations/', import.meta.url);
 const migrationSql = await readFile(new URL(migrationName, migrations), 'utf8');
 const contractSource = await readFile(new URL('../src/lib/payments/contracts.ts', import.meta.url), 'utf8');
@@ -54,6 +54,13 @@ test('domain accepts only persistable method metadata and integer installments 1
     { payment_method: 'external', installments: null, provider_payment_method_id: null },
   ]) assert.deepEqual(validatePaymentAttemptMethod(card), card);
   const valid = { payment_method: 'credit_card', installments: 1, provider_payment_method_id: 'visa' };
+  for (const methodId of ['master', 'brand-v2.0', 'VISA', 'Cartão', 'a'.repeat(64), '🎴'.repeat(64)]) {
+    const card = { ...valid, provider_payment_method_id: methodId };
+    assert.deepEqual(validatePaymentAttemptMethod(card), card);
+  }
+  for (const methodId of ['', ' ', ' master', 'master ', 'brand\u0001', 'brand\u007f', 'brand\tname', 'brand\nname', 'a'.repeat(65), '🎴'.repeat(65)]) {
+    assert.throws(() => validatePaymentAttemptMethod({ ...valid, provider_payment_method_id: methodId }), /invalid_payment_attempt_method/);
+  }
   for (const installments of [null, undefined, 0, 13, 1.5, NaN, Infinity, '1']) {
     assert.throws(() => validatePaymentAttemptMethod({ ...valid, installments }), /invalid_payment_attempt_method/);
   }
@@ -129,7 +136,7 @@ test('credit card database contract, existing RPCs and private adjustments', asy
         const row = await contribution(db, giftId);
         await assert.rejects(attempt(db, row, installments), /payment_attempt_method_metadata_valid/);
       }
-      for (const methodId of [null, 'pix', '', 'VISA', 'a'.repeat(65)]) {
+      for (const methodId of [null, 'pix']) {
         await assert.rejects(attempt(db, await contribution(db, giftId), 1, methodId), /payment_attempt_method_(metadata_valid|id_valid)/);
       }
       const penny = await contribution(db, giftId, 'credit_card', 'production', 0.01);
@@ -138,6 +145,15 @@ test('credit card database contract, existing RPCs and private adjustments', asy
       const fixed = await contribution(db, fixedGift, 'credit_card', 'production', 75);
       assert.equal(Number((await attempt(db, fixed, 12)).amount), 75);
       await assert.rejects(contribution(db, fixedGift, 'credit_card', 'production', 50), /fixed_amount_required/);
+    });
+
+    await t.test('provider method identifier has structural validation without an arbitrary alphabet', async () => {
+      for (const methodId of ['master', 'brand-v2.0', 'VISA', 'Cartão', 'a'.repeat(64), '🎴'.repeat(64)]) {
+        assert.equal((await attempt(db, await contribution(db, giftId), 1, methodId)).provider_payment_method_id, methodId);
+      }
+      for (const methodId of ['', ' ', ' master', 'master ', 'brand\u0001', 'brand\u007f', 'brand\tname', 'brand\nname', 'a'.repeat(65), '🎴'.repeat(65)]) {
+        await assert.rejects(attempt(db, await contribution(db, giftId), 1, methodId), /payment_attempt_method_id_valid/);
+      }
     });
 
     await t.test('invalid methods, Pix/external installments and method mismatch rejected', async () => {

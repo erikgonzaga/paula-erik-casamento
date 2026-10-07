@@ -1,6 +1,6 @@
 # Cartão de crédito — contrato, etapa 1
 
-Preparação local em `202610080001_credit_card_domain.sql`. Não aplicada remotamente.
+Preparação local em `202610070003_credit_card_domain.sql`. Não aplicada remotamente.
 Nenhum checkout de cartão, tokenização ou chamada ao Mercado Pago foi implementado.
 
 ## Contrato persistente
@@ -8,6 +8,7 @@ Nenhum checkout de cartão, tokenização ou chamada ao Mercado Pago foi impleme
 - `gift_contributions.payment_method`: `pix`, `credit_card` ou `external`, imutável.
 - `payment_attempts.payment_method` deve corresponder à contribuição.
 - Cartão exige `installments` inteiro entre 1 e 12 e `provider_payment_method_id`.
+- Quando presente, o identificador tem 1–64 caracteres, sem espaços nas bordas ou controles; não impõe alfabeto.
 - Pix exige parcelas NULL e identificador `pix`; external exige parcelas NULL.
 - Método, parcelas e identificador do método são imutáveis na tentativa.
 - `amount` permanece o total da contribuição; não é dividido pelas parcelas nem acrescido de taxas.
