@@ -61,7 +61,7 @@ test('Unambiguous rotation changes every code once and preserves answered RSVP d
  } finally {await db.close();}
 });
 
-test('Invitation lookup temporarily accepts legacy and short codes while the database authorizes access',async()=>{
+test('Invitation lookup accepts only definitive codes while the database authorizes access',async()=>{
  let source=await readFile(new URL('../src/services/invitations.ts',import.meta.url),'utf8');
  source=source.replace("import 'server-only';",'').replace("import { database } from '@/lib/supabase/server';",'const database=globalThis.__shortCodeDatabase;')
   .replace("import { InvitationError } from '@/lib/invitations/validation';",'class InvitationError extends Error { constructor(status,message){super(message);this.status=status;} }');
@@ -74,19 +74,14 @@ test('Invitation lookup temporarily accepts legacy and short codes while the dat
   await findInvitationByCode('  aBc234  ');
   assert.match(calls[0],/code=eq\.ABC234&/);
   assert.equal(calls[0],calls[1]);
-  for(const code of ['ABCO23','ABC023','ABCI23','ABCL23','ABC123']) {
-   await findInvitationByCode('  '+code.toLowerCase()+'  ');
-   assert.ok(calls.at(-1).includes('code=eq.'+code+'&'));
-  }
-  for(const size of [20,32,64]) {
-   await findInvitationByCode('  '+'a'.repeat(size)+'  ');
-   assert.ok(calls.at(-1).includes('code=eq.'+'A'.repeat(size)+'&'));
-  }
-  for(const code of ['ABCDE','ABCDEFG','ABC-12','ÁBC234','A'.repeat(19),'A'.repeat(65)])
+  for(const code of ['ABCI23','ABCL23','ABCO23','ABC023','ABC123',
+    'ABCDE','ABCDEFG','ABC-12','ÁBC234',...[20,32,64].map(size=>'A'.repeat(size))]) {
    assert.throws(()=>findInvitationByCode(code),error=>error.status===404);
-  assert.equal(calls.length,10);
+   assert.throws(()=>findInvitationByCode('  '+code.toLowerCase()+'  '),error=>error.status===404);
+  }
+  assert.equal(calls.length,2,'invalid formats must be rejected before querying');
   await assert.rejects(findInvitationByCode('ZZZ999'),error=>error.status===404);
-  assert.equal(calls.length,11,'valid format alone must not authorize an unknown code');
+  assert.equal(calls.length,3,'valid format alone must not authorize an unknown code');
  } finally {delete globalThis.__shortCodeDatabase;}
 });
 test('Migrations, RLS, RSVP atomicity and edits',async()=>{
