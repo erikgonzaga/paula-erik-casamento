@@ -74,15 +74,19 @@ test('Invitation lookup temporarily accepts legacy and short codes while the dat
   await findInvitationByCode('  aBc234  ');
   assert.match(calls[0],/code=eq\.ABC234&/);
   assert.equal(calls[0],calls[1]);
+  for(const code of ['ABCO23','ABC023','ABCI23','ABCL23','ABC123']) {
+   await findInvitationByCode('  '+code.toLowerCase()+'  ');
+   assert.ok(calls.at(-1).includes('code=eq.'+code+'&'));
+  }
   for(const size of [20,32,64]) {
    await findInvitationByCode('  '+'a'.repeat(size)+'  ');
    assert.ok(calls.at(-1).includes('code=eq.'+'A'.repeat(size)+'&'));
   }
-  for(const code of ['ABCDE','ABCDEFG','ABC-12','ÁBC234','ABCI23','ABCL23','ABCO23','ABC023','ABC123','A'.repeat(19),'A'.repeat(65)])
+  for(const code of ['ABCDE','ABCDEFG','ABC-12','ÁBC234','A'.repeat(19),'A'.repeat(65)])
    assert.throws(()=>findInvitationByCode(code),error=>error.status===404);
-  assert.equal(calls.length,5);
+  assert.equal(calls.length,10);
   await assert.rejects(findInvitationByCode('ZZZ999'),error=>error.status===404);
-  assert.equal(calls.length,6,'valid format alone must not authorize an unknown code');
+  assert.equal(calls.length,11,'valid format alone must not authorize an unknown code');
  } finally {delete globalThis.__shortCodeDatabase;}
 });
 test('Migrations, RLS, RSVP atomicity and edits',async()=>{

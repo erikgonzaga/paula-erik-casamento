@@ -19,7 +19,7 @@ export async function POST(request:Request) {
     const normalizedCode=code?.trim().toUpperCase()??null;
     const usingCode=normalizedCode!==null;
     if(usingCode) {
-      stage='code_normalized';debugAccess(stage,{length:normalizedCode.length,valid_format:/^(?:[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}|[A-Z0-9]{20,64})$/.test(normalizedCode)});
+      stage='code_normalized';debugAccess(stage,{length:normalizedCode.length,valid_format:/^(?:[A-Z0-9]{6}|[A-Z0-9]{20,64})$/.test(normalizedCode)});
     }
     stage='group_lookup';
     const group=usingCode ? await findInvitationByCode(normalizedCode)
