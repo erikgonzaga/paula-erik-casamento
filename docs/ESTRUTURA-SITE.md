@@ -112,6 +112,7 @@ O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_defin
 2. O formulário normaliza no cliente, mas o servidor repete a normalização.
 3. `POST /api/invitations/access` lê uma string, aplica `trim().toUpperCase()`, valida o código normalizado e chama `findInvitationByCode`.
 4. `findInvitationByCode` consulta exatamente `invitation_groups.code` e rejeita grupo inexistente/inativo.
+   Durante o rollout, a aplicação aceita códigos `[A-Z0-9]` de exatamente 6 ou de 20–64 caracteres; minúsculas são normalizadas antes da validação e o banco decide se o código existe. A migration `202610070001_short_invitation_codes.sql`, ainda para aplicação manual, troca somente códigos longos, preserva IDs/slugs/convidados/RSVPs e mantém unicidade. Códigos antigos deixarão de funcionar após a aplicação; links por slug e sessões existentes continuam válidos. O rate limiting permanece obrigatório devido ao espaço menor de códigos. Publicar a compatibilidade antes de aplicar a migration.
 5. O servidor grava cookie assinado e HttpOnly.
 6. O cliente navega para `/convite/[slug]`.
 7. A rota por slug cria a mesma sessão e `GET /api/rsvp` carrega o convite.

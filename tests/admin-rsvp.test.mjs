@@ -11,7 +11,7 @@ test('Admin RSVP details keep individual status and group answers isolated', asy
     await db.query('insert into admin_users(user_id) values ($1)', [adminId]);
     const addGroup = async (name, active = true, isDemo = false) =>
       (await db.query('insert into invitation_groups(name,slug,code,active,is_demo) values ($1,$2,$3,$4,$5) returning id',
-        [name, randomUUID(), randomUUID().replaceAll('-', '').toUpperCase(), active, isDemo])).rows[0].id;
+        [name, randomUUID(), randomUUID().replaceAll('-', '').toUpperCase().slice(0,6), active, isDemo])).rows[0].id;
     const silvaA = await addGroup('Família Silva');
     const silvaB = await addGroup('Família Silva');
     const demo = await addGroup('Família Demo', true, true);

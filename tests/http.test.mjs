@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codes } from './database-fixture.mjs';
+import { codes, slugs } from './database-fixture.mjs';
 const base=process.env.TEST_APP_URL||'http://127.0.0.1:3101';
 const requestOrigin=process.env.TEST_REQUEST_ORIGIN||base;
 async function api(path,{body,cookie,origin=requestOrigin,method}={}){
@@ -12,11 +12,11 @@ test('HTTP: closed invitations, privacy, responses and cross-group attacks',asyn
  assert.equal((await api('/api/invitations/access',{body:{code:'INVALID'}})).status,404);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.inactive}})).status,403);
  assert.equal((await api('/api/invitations/access',{body:{code:codes.silva},origin:'https://outside.example'})).status,403);
- const upperCaseOpen=await api('/api/invitations/access',{body:{code:'6D88EECF1CDEA14190ABA9B50B63DBA3'}});
+ const upperCaseOpen=await api('/api/invitations/access',{body:{code:codes.silva}});
  assert.equal(upperCaseOpen.status,200);
- const open=await api('/api/invitations/access',{body:{code:'6d88eecf1cdea14190aba9b50b63dba3'}});
+ const open=await api('/api/invitations/access',{body:{code:'  '+codes.silva.toLowerCase()+'  '}});
  assert.equal(open.status,200);
- const expectedSlug='demo-familia-silva-'+codes.silva.toLowerCase();
+ const expectedSlug=slugs.silva;
  assert.equal((await upperCaseOpen.json()).slug,expectedSlug);assert.equal((await open.clone().json()).slug,expectedSlug);
  const cookie=open.headers.get('set-cookie').split(';')[0];
  assert.match(open.headers.get('set-cookie'),/HttpOnly/i);
@@ -28,7 +28,7 @@ test('HTTP: closed invitations, privacy, responses and cross-group attacks',asyn
  let saved=await api('/api/rsvp',{cookie,body:response});assert.equal(saved.status,200);assert.equal((await saved.json()).updated,false);
  response.guests[0].phone='11999991111';response.guests[2].status='declined';response.notes='Atualizado';
  saved=await api('/api/rsvp',{cookie,body:response});assert.equal(saved.status,200);assert.equal((await saved.json()).updated,true);
- const reopen=await api('/api/invitations/access',{body:{slug:'demo-familia-silva-'+codes.silva.toLowerCase()}});
+ const reopen=await api('/api/invitations/access',{body:{slug:slugs.silva}});
  assert.equal(reopen.status,200);
  const persisted=await (await api('/api/rsvp',{cookie:reopen.headers.get('set-cookie').split(';')[0]})).json();
  assert.equal(persisted.rsvp.notes,'Atualizado');assert.equal(persisted.rsvp.dietary_restrictions,'Pedro: sem lactose');assert.equal(persisted.guests[0].phone,'11999991111');assert.equal(persisted.guests[1].phone,'11999990002');assert.equal(persisted.guests[2].phone,null);assert.equal(persisted.guests[2].attendance_status,'declined');
