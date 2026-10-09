@@ -7,7 +7,7 @@ import type { InsaneGift } from '@/lib/gifts/types';
 import { GiftContributionForm } from './gift-contribution-form';
 import styles from './gift-contribution-form.module.css';
 
-export function InsaneContributionButton({ gift, className }: { gift: InsaneGift; className: string }) {
+export function InsaneContributionButton({ gift, className, cardCheckoutEnabled=false }: { gift: InsaneGift; className: string; cardCheckoutEnabled?:boolean }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -27,7 +27,7 @@ export function InsaneContributionButton({ gift, className }: { gift: InsaneGift
           <p className={styles.eyebrow}>PRESENTE INSANO</p>
           <h2 id={`insane-contribution-${gift.id}`}>{gift.name}</h2>
           <p className={styles.fixedAmount}>{formatGiftAmount(gift.target_amount)}</p>
-          <GiftContributionForm gift={gift} />
+          <GiftContributionForm gift={gift} cardCheckoutEnabled={cardCheckoutEnabled} />
         </section>
       </div>,
       document.body,

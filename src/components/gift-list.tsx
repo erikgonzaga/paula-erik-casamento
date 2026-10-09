@@ -90,7 +90,7 @@ function GiftCard({gift,onSelect}:{gift:RegularGift;onSelect:(gift:RegularGift)=
   </article>;
 }
 
-export function GiftList({gifts}:{gifts:RegularGift[]}){
+export function GiftList({gifts,cardCheckoutEnabled=false}:{gifts:RegularGift[];cardCheckoutEnabled?:boolean}){
   const [category,setCategory]=useState<Category>('all');
   const [selected,setSelected]=useState<RegularGift|null>(null);
   const dialogRef=useRef<HTMLElement|null>(null);
@@ -143,7 +143,7 @@ export function GiftList({gifts}:{gifts:RegularGift[]}){
         <h2 id="gift-detail-title">{currentSelected.name}</h2>
         <div className={styles.modalFunding}><GiftFunding gift={currentSelected} /></div>
         <p id="gift-detail-description" className={styles.description}>{currentSelected.description??''}</p>
-        <div className={styles.modalForm}><GiftContributionForm gift={currentSelected} /></div>
+        <div className={styles.modalForm}><GiftContributionForm gift={currentSelected} cardCheckoutEnabled={cardCheckoutEnabled} /></div>
       </div>
     </section></div>}
   </>;

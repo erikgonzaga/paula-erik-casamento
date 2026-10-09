@@ -2,6 +2,7 @@ import { GiftContributionError } from '@/lib/gifts/contribution';
 import { assertSameOrigin, limit, readBody } from '@/lib/invitations/http';
 import { InvitationError } from '@/lib/invitations/validation';
 import { createGiftPayment } from '@/services/gift-payments';
+import { creditCardCheckoutEnabled } from '@/lib/payments/card-checkout-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,8 +22,7 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = await readBody(request);
     await limit(request, 'gift-contribution', 10);
-    // Backend stage 2 only: card checkout is not enabled for public guests yet.
-    if (body && typeof body === 'object' && 'payment_method' in body && body.payment_method === 'credit_card') {
+    if (body && typeof body === 'object' && 'payment_method' in body && body.payment_method === 'credit_card' && !creditCardCheckoutEnabled()) {
       throw new GiftContributionError(409, 'credit_card_unavailable', 'Pagamento por cartão ainda não está disponível.');
     }
     return json(await createGiftPayment(body), 201);

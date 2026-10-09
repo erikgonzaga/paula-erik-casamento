@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/rsvp.test.mjs tests/gifts.test.mjs tests/gift-progress.test.mjs tests/gift-contribution.test.mjs tests/mercado-pago.test.mjs tests/pix-reconciliation.test.mjs tests/admin.test.mjs tests/admin-rsvp.test.mjs tests/admin-recovery.test.mjs tests/payment-environment.test.mjs tests/credit-card-domain.test.mjs tests/credit-card-backend.test.mjs",
+    "test": "node --test tests/rsvp.test.mjs tests/gifts.test.mjs tests/gift-progress.test.mjs tests/gift-contribution.test.mjs tests/mercado-pago.test.mjs tests/pix-reconciliation.test.mjs tests/admin.test.mjs tests/admin-rsvp.test.mjs tests/admin-recovery.test.mjs tests/payment-environment.test.mjs tests/credit-card-domain.test.mjs tests/credit-card-backend.test.mjs tests/credit-card-checkout.test.mjs",
     "test:admin:http": "node --test tests/admin-http.test.mjs",
     "test:http": "node --test tests/http.test.mjs",
     "test:fixture": "node tests/serve-fixture.mjs"
   },
   "dependencies": {
+    "@mercadopago/sdk-js": "^0.0.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "mercadopago": "^3.6.1",
@@ -29,6 +30,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "jsdom": "^30.1.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

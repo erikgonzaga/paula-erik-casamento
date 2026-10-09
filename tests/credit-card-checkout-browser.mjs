@@ -1,0 +1,144 @@
+// Optional browser QA. Catalogue, SDK, challenge and HTTP are local fakes.
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.argv[2] || 'playwright');
+const cwd = fileURLToPath(new URL('../', import.meta.url));
+const output = process.argv[3] || `${cwd}/.screenshots/card-checkout-stage3`;
+await mkdir(output, { recursive: true });
+const gifts = [
+  { id: '00000000-0000-4000-8000-000000000001', name: 'Uma ajudinha com os últimos boletos 😅', slug: 'ajudinha-ultimos-boletos',
+    category: 'party', gift_type: 'regular', funding_mode: 'open', target_amount: null, image_url: null,
+    description: 'Catálogo fictício para validação local.', display_order: 1, allow_multiple: true },
+  { id: '00000000-0000-4000-8000-000000000002', name: 'Presente Insano — Moeda de Bronze', slug: 'moeda-bronze',
+    category: 'insanos', gift_type: 'insanos', funding_mode: 'fixed', target_amount: 75, image_url: '/images/presentes/moeda-bronze-final.png',
+    description: 'Catálogo fictício para validação local.', display_order: 36, allow_multiple: true },
+];
+const fixture = createServer((request, response) => {
+  const path = new URL(request.url, 'http://localhost').pathname;
+  response.writeHead(['/rest/v1/gifts', '/rest/v1/rpc/get_gift_progress'].includes(path) ? 200 : 400, { 'Content-Type': 'application/json' });
+  response.end(JSON.stringify(path === '/rest/v1/gifts' ? gifts : []));
+});
+await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+const fixtureUrl = `http://127.0.0.1:${fixture.address().port}`;
+const baseUrl = 'http://127.0.0.1:3138';
+const next = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--webpack', '--hostname', '127.0.0.1', '--port', '3138'], {
+  cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, APP_ORIGIN: baseUrl, NEXT_PUBLIC_SUPABASE_URL: fixtureUrl, SUPABASE_URL: fixtureUrl,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'MOCK_ANON', SUPABASE_SERVICE_ROLE_KEY: 'MOCK_SERVICE',
+    MERCADO_PAGO_ACCESS_TOKEN: 'MOCK_NOT_USED', MERCADO_PAGO_WEBHOOK_SECRET: 'MOCK_NOT_USED',
+    PAYMENTS_ENVIRONMENT: 'test', ENABLE_CREDIT_CARD_CHECKOUT: 'true', NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY: 'MOCK_PUBLIC_KEY', NEXT_TELEMETRY_DISABLED: '1' },
+});
+next.stdout.resume(); next.stderr.resume(); // Never print configuration or response bodies.
+let exited = false; next.once('exit', () => { exited = true; });
+let browser;
+try {
+  let ready = false;
+  for (let index = 0; index < 90; index++) {
+    if (exited) throw new Error('Local fixture server exited before QA');
+    try { ready = (await fetch(`${baseUrl}/presentes`, { signal: AbortSignal.timeout(2000) })).ok; } catch { /* Starting. */ }
+    if (ready) break;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  assert.ok(ready, 'Local isolated fixture did not start');
+  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage();
+  const errors = []; page.on('pageerror', error => errors.push(error.name));
+  let posts = 0, queries = 0, sdkRequests = 0, frameResponses = 0, challengeComplete = false;
+  await page.addInitScript(() => { window.__brickQA = { created: 0, unmounted: 0 }; });
+  await page.context().route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin === baseUrl && url.pathname === '/api/gift-contributions') {
+      posts++; const body = route.request().postDataJSON();
+      assert.equal(body.payment_method, 'credit_card'); assert.equal(body.installments, 12); assert.equal(body.card_token, 'MOCK_TEMP_TOKEN');
+      for (const key of ['card_number', 'cvv', 'expiration_date']) assert.ok(!Object.hasOwn(body, key));
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ payment_status: 'pending', payment: {
+        status: 'action_required', expires_at: '', qr_code: null, qr_code_base64: null, ticket_url: null, challenge: { url: 'https://issuer.example/challenge' },
+      } }) });
+    }
+    if (url.origin === baseUrl && url.pathname === '/api/gift-contributions/status') {
+      queries++;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ payment_status: challengeComplete ? 'confirmed' : 'pending',
+        payment: { status: challengeComplete ? 'confirmed' : 'action_required', expires_at: '', qr_code: null, qr_code_base64: null, ticket_url: null,
+          ...(challengeComplete ? {} : { challenge: { url: 'https://issuer.example/challenge' } }) } }) });
+    }
+    if (url.hostname === 'sdk.mercadopago.com') {
+      sdkRequests++;
+      return route.fulfill({ status: 200, contentType: 'application/javascript', body: `
+      window.MercadoPago = class { bricks() { return { create: async (type, id, settings) => {
+        window.__brickQA.created++;
+        const host = document.getElementById(id);
+        host.innerHTML = '<form style="display:grid;gap:16px"><p>FORMULÁRIO SDK SIMULADO</p><label style="display:grid;gap:8px">Dados do cartão no SDK<input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Campos seguros do provedor" disabled /></label><label style="display:grid;gap:8px">Parcelas<select style="width:100%;min-width:0;padding:12px;border:1px solid #c7bda8;border-radius:6px;font:inherit"><option>12x disponibilizadas pelo provedor</option></select></label><button style="padding:12px" type="submit">PAGAR (SDK SIMULADO)</button></form>';
+        host.querySelector('form').onsubmit = async event => { event.preventDefault(); await settings.callbacks.onSubmit({ token: 'MOCK_TEMP_TOKEN', payment_method_id: 'master', installments: 12 }, { paymentTypeId: 'credit_card' }); };
+        settings.callbacks.onReady();
+        return { unmount: async () => { window.__brickQA.unmounted++; host.innerHTML = ''; } };
+      } }; } };
+      ` });
+    }
+    if (url.origin === 'https://issuer.example') {
+      frameResponses++;
+      return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body:
+        '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"></head><body style="font:18px Georgia;color:#4e402f;background:#f8f5ec;padding:24px"><p>Desafio 3DS simulado</p><button onclick="parent.postMessage({status:\'COMPLETE\'},\'*\')">Concluir desafio fictício</button></body></html>' });
+    }
+    if (url.origin === baseUrl) return route.continue();
+    return route.abort(); // Blocks real provider, tokenization and telemetry.
+  });
+  for (const width of [390, 768, 1440]) {
+    challengeComplete = false;
+    const sdkBefore = sdkRequests;
+    await page.setViewportSize({ width, height: 1100 });
+    await page.goto(`${baseUrl}/presentes`, { waitUntil: 'networkidle' });
+    await page.locator('section[aria-label="Presentes disponíveis"] article').getByRole('button', { name: 'CONTRIBUIR', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(/Outro valor/).fill('50,00'); await dialog.getByLabel(/^Nome/).fill('Pessoa Fictícia');
+    await dialog.getByLabel(/WhatsApp/).fill('11999999999'); await dialog.getByLabel(/E-mail/).fill('fixture@example.invalid');
+    assert.equal(sdkRequests, sdkBefore, 'Pix must not load MercadoPago.js');
+    await dialog.screenshot({ path: `${output}/methods-${width}.png` });
+    await dialog.getByRole('button', { name: 'Cartão de crédito', exact: true }).click(); await dialog.getByRole('button', { name: 'CONTINUAR', exact: true }).click();
+    await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).waitFor();
+    assert.equal(sdkRequests, sdkBefore + 1);
+    await dialog.screenshot({ path: `${output}/brick-mock-${width}.png` });
+    assert.equal((await page.evaluate(() => window.__brickQA)).created, 1);
+    await dialog.getByRole('button', { name: 'VOLTAR AO PIX' }).click();
+    assert.equal((await page.evaluate(() => window.__brickQA)).unmounted, 1);
+    await dialog.getByRole('button', { name: 'Cartão de crédito', exact: true }).click(); await dialog.getByRole('button', { name: 'CONTINUAR', exact: true }).click();
+    await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).waitFor();
+    assert.equal((await page.evaluate(() => window.__brickQA)).created, 2);
+    const before = posts;
+    await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).click(); await dialog.locator('iframe').waitFor();
+    await dialog.locator('iframe').scrollIntoViewIfNeeded();
+    try {
+      await page.frameLocator('iframe[title="Verificação segura do cartão"]').getByRole('button', { name: 'Concluir desafio fictício' }).waitFor({ timeout: 10000 });
+    } catch {
+      console.log('Fake frame diagnostic:', { fulfilled: frameResponses, frames: await Promise.all(page.frames().map(async frame => ({
+        isMain: frame === page.mainFrame(), url: frame.url(), buttons: await frame.locator('button').count(),
+        characters: await frame.locator('body').evaluate(body => body.textContent.length).catch(() => -1),
+      }))) });
+      throw new Error('Isolated fake challenge did not load');
+    }
+    assert.equal(posts, before + 1); assert.ok(!(await dialog.innerText()).includes('aprovado e confirmado'));
+    assert.ok(!(await dialog.locator('iframe').getAttribute('sandbox')).includes('top-navigation'));
+    await dialog.screenshot({ path: `${output}/challenge-${width}.png` });
+    challengeComplete = true; const checked = queries;
+    await page.frameLocator('iframe[title="Verificação segura do cartão"]').getByRole('button', { name: 'Concluir desafio fictício' }).click();
+    await dialog.getByText('Pagamento aprovado e confirmado.', { exact: true }).waitFor(); assert.ok(queries > checked);
+    await dialog.getByRole('button', { name: 'Fechar detalhes do presente' }).click();
+    await page.locator('#contribuir-bronze').click();
+    assert.equal(await page.getByRole('dialog').locator('input[name="amount"]').count(), 0);
+    assert.ok(await page.getByRole('dialog').getByLabel(/Nome de Colete/).isVisible());
+    await page.getByRole('dialog').getByRole('button', { name: 'Fechar contribuição' }).click();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px: horizontal overflow`);
+    assert.deepEqual(errors, []);
+    console.log(`${width}px: fake SDK, method switch, cleanup, pending, 3DS/status and fixed gift passed`);
+  }
+} finally {
+  await browser?.close();
+  const stopped = new Promise(resolve => next.once('exit', resolve));
+  if (!exited) { next.kill(); await stopped; }
+  await new Promise(resolve => fixture.close(resolve));
+}

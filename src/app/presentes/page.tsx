@@ -6,6 +6,7 @@ import { InsaneContributionButton } from '@/components/insane-contribution-butto
 import { formatGiftAmount } from '@/lib/gifts/format';
 import { isInsaneGift, isRegularGift } from '@/lib/gifts/types';
 import { getActiveGifts } from '@/services/gifts';
+import { creditCardCheckoutEnabled } from '@/lib/payments/card-checkout-policy';
 import styles from './presentes.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,7 @@ function MotorcycleIcon() {
 
 export default async function PresentsPage() {
   const gifts = await getActiveGifts();
+  const cardCheckoutEnabled = creditCardCheckoutEnabled();
   const regularGifts = gifts.filter(isRegularGift);
   const insaneGifts = gifts.filter(isInsaneGift);
 
@@ -75,7 +77,7 @@ export default async function PresentsPage() {
               <em>vêm pela frente.</em>
             </h2>
           </div>
-          <GiftList gifts={regularGifts} />
+          <GiftList gifts={regularGifts} cardCheckoutEnabled={cardCheckoutEnabled} />
         </section>
 
         <section className={styles.insane} aria-labelledby="presentes-insanos-title">
@@ -110,7 +112,7 @@ export default async function PresentsPage() {
                     <p className={styles.medalLabel}>PRESENTE INSANO</p>
                     <p className={styles.medalDescription}>{gift.description??''}</p>
                     <p className={styles.medalPrice}>{formatGiftAmount(gift.target_amount)}</p>
-                    <InsaneContributionButton gift={gift} className={insaneButtonClasses[gift.slug]??styles.buttonBronze} />
+                    <InsaneContributionButton gift={gift} cardCheckoutEnabled={cardCheckoutEnabled} className={insaneButtonClasses[gift.slug]??styles.buttonBronze} />
                   </div>
                 </article>
               ))}

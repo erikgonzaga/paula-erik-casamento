@@ -2,7 +2,8 @@
 
 Implementação local, validada com PostgreSQL PGlite e fetch simulado. Nenhuma chamada real ao Mercado Pago,
 alteração remota, frontend de cartão ou ativação para convidados integra esta etapa.
-O POST público de contribuições continua recusando `payment_method=credit_card` com HTTP 409.
+Na etapa 2, o POST público recusava `payment_method=credit_card` com HTTP 409.
+A etapa 3 acrescenta uma liberação exclusiva de TEST, com flag explícita; produção continua bloqueada.
 
 ## Fluxo compartilhado
 
@@ -12,7 +13,7 @@ Somente a construção da transação de cartão e o claim com seus metadados t�
 O valor é sempre bruto: nenhum adicional, taxa ou divisão pelas parcelas é aplicado à contribuição.
 As regras goal/open/fixed, overfunding, progresso confirmed/production e ambientes legados permanecem.
 
-`202610070004_credit_card_backend.sql` é uma migration nova, ainda NÃO aplicada remotamente.
+`202610070004_credit_card_backend.sql` foi aplicada e validada remotamente pelo proprietário antes da etapa 3.
 Ela extrai a lógica financeira do claim para um core privado compartilhado e mantém a assinatura Pix.
 Adiciona a RPC service_role-only `claim_gift_card_payment_attempt` com parcelas e identificador do método.
 Não altera tabelas, dados históricos, a migration 003, assinatura do webhook ou configuração do scheduler.
@@ -56,9 +57,10 @@ diagnóstico técnico estrutural, sem detalhes livres que possam revelar dados d
 
 ## Pendências antes de qualquer ativação
 
-- Revisar e aplicar manualmente a migration 004 em etapa autorizada; não usar db push.
-- Tokenização com SDK/Brick, desafio 3DS e homologação real TEST ainda não implementados.
-- Não há NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY nova nesta etapa.
+- Migration 004 concluída; não reaplicar nem usar db push nesta etapa.
+- Frontend SDK/Brick e desafio 3DS implementados na [etapa 3](CARTAO-CREDITO-ETAPA3.md), com mocks;
+  homologação real TEST ainda pendente.
+- NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY é configurada somente na etapa 3, para homologação TEST.
 - Confirmar disponibilidade de parcelas sem juros e custos absorvidos pela conta recebedora antes da ativação.
   O backend não adiciona taxa ao valor; não usa parâmetro de Point/Checkout Pro como se fosse contrato de Checkout API.
 - Implementar consumo de estornos/chargebacks preparado na etapa 1 antes da política financeira definitiva.
