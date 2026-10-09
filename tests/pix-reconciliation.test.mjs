@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createDatabase } from './database-fixture.mjs';
 import ts from 'typescript';
+import { typescriptModule } from './typescript-fixture.mjs';
 
 const migrationName = '202609260001_pix_expiry_reconciliation.sql';
 const key = n => `50000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -279,9 +280,11 @@ const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(code).toStr
 
 async function paymentServiceFixture({ attempt, orderStatus = 'processing', orderDetail = 'in_process', providerError = 0 }) {
   process.env.PAYMENTS_ENVIRONMENT = 'test';
-  attempt = { payment_environment: 'test', ...attempt };
+  attempt = { payment_environment: 'test', payment_method: 'pix', installments: null,
+    provider_payment_method_id: 'pix', ...attempt };
   const contribution = {
     payment_environment: 'test',
+    payment_method: 'pix',
     id: attempt.contribution_id, gift_id: '70000000-0000-4000-8000-000000000001',
     payment_status: 'pending', contributor_name: 'Test', contributor_email: 'test@example.test',
   };
@@ -305,6 +308,7 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
   const clientUrl = moduleUrl(`
     export const calls = [];
     export async function createPixOrder() { calls.push('POST'); throw new Error('POST must not happen'); }
+    export async function createCreditCardOrder() { calls.push('POST'); throw new Error('card POST must not happen'); }
     export async function getOrder() { calls.push('GET');
       const simulatedError = ${JSON.stringify(providerError)};
       if (simulatedError) { const error = new Error('provider unavailable');
@@ -325,6 +329,7 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
   const source = (await readFile(new URL('../src/services/gift-payments.ts', import.meta.url), 'utf8'))
     .replace("import 'server-only';", '')
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
+    .replace("from '@/lib/payments/contracts'", `from '${await typescriptModule('../src/lib/payments/contracts.ts')}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)
     .replace("from '@/lib/supabase/server'", `from '${databaseUrl}'`)
     .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`);

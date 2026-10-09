@@ -2,6 +2,54 @@ export type PaymentMethod = 'pix' | 'credit_card' | 'external';
 export type PaymentEnvironment = 'test' | 'production';
 export type CardInstallments = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
+// Request-lifetime values only. Never pass this object to database writes/logs.
+export type CreditCardInput = {
+  card_token: string;
+  payment_method_id: string;
+  installments: CardInstallments;
+  payer?: { identification: { type: 'CPF' | 'CNPJ'; number: string } };
+  device_id?: string;
+};
+export type ContributionPaymentInput =
+  | { payment_method: 'pix' }
+  | ({ payment_method: 'credit_card' } & CreditCardInput);
+
+export function parseContributionPayment(input: Record<string, unknown>): ContributionPaymentInput {
+  const fail = (): never => { throw new Error('invalid_card_payment'); };
+  const method = input.payment_method === undefined ? 'pix' : input.payment_method;
+  const cardKeys = ['card_token', 'payment_method_id', 'installments', 'payer', 'device_id'];
+  if (method === 'pix') {
+    if (cardKeys.some(key => Object.hasOwn(input, key))) return fail();
+    return { payment_method: 'pix' };
+  }
+  if (method !== 'credit_card') return fail();
+  const metadata = validatePaymentAttemptMethod({ payment_method: method,
+    installments: input.installments, provider_payment_method_id: input.payment_method_id });
+  if (metadata.payment_method !== 'credit_card') return fail();
+  if (typeof input.card_token !== 'string' || input.card_token !== input.card_token.trim() ||
+      input.card_token.length < 1 || input.card_token.length > 2048 ||
+      /[\x00-\x1f\x7f]/.test(input.card_token)) return fail();
+  const payment: ContributionPaymentInput = { payment_method: 'credit_card',
+    card_token: input.card_token, payment_method_id: metadata.provider_payment_method_id,
+    installments: metadata.installments };
+  if (input.payer !== undefined) {
+    if (!input.payer || typeof input.payer !== 'object' || Array.isArray(input.payer)) return fail();
+    const payer = input.payer as Record<string, unknown>;
+    if (Object.keys(payer).length !== 1 || !payer.identification ||
+        typeof payer.identification !== 'object' || Array.isArray(payer.identification)) return fail();
+    const document = payer.identification as Record<string, unknown>;
+    if (Object.keys(document).length !== 2 || !['CPF', 'CNPJ'].includes(String(document.type)) ||
+        typeof document.number !== 'string' ||
+        !(document.type === 'CPF' ? /^\d{11}$/ : /^\d{14}$/).test(document.number)) return fail();
+    payment.payer = { identification: { type: document.type as 'CPF' | 'CNPJ', number: document.number } };
+  }
+  if (input.device_id !== undefined) {
+    if (typeof input.device_id !== 'string' || !/^[\x21-\x7e]{1,256}$/.test(input.device_id)) return fail();
+    payment.device_id = input.device_id;
+  }
+  return payment;
+}
+
 // Persistable metadata only. Card tokens and cardholder input do not belong here.
 export type PaymentAttemptMethod =
   | { payment_method: 'pix'; installments: null; provider_payment_method_id: 'pix' }

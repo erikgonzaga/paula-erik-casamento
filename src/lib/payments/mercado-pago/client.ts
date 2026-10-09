@@ -1,4 +1,5 @@
 import 'server-only';
+import { parseContributionPayment, type CreditCardInput } from '@/lib/payments/contracts';
 import { logDevelopmentDiagnostic, safeDiagnosticCode, safeDiagnosticText } from '@/lib/server-diagnostics';
 
 export type MercadoPagoPayment = {
@@ -12,6 +13,8 @@ export type MercadoPagoPayment = {
     ticket_url: string | null;
     qr_code: string | null;
     qr_code_base64: string | null;
+    installments?: number | null;
+    challenge_url?: string | null;
   };
 };
 
@@ -41,21 +44,22 @@ const apiBase = 'https://api.mercadopago.com';
 
 // Provider messages can contain indexed field paths. Keep those paths readable
 // while the shared sanitizer still rejects emails, credentials and payloads.
-function safeProviderText(value: unknown): string | undefined {
+function safeProviderText(value: unknown, sensitive: string[] = []): string | undefined {
+  if (typeof value === 'string' && sensitive.some(secret => secret && value.includes(secret))) return '[redacted]';
   return safeDiagnosticText(typeof value === 'string' ? value.replace(/\[(\d{1,3})\]/g, '.$1') : value);
 }
 
-function safeProviderCause(value: unknown): string | undefined {
+function safeProviderCause(value: unknown, sensitive: string[] = []): string | undefined {
   const entries = Array.isArray(value) ? value.slice(0, 5) : [value];
   const safeEntries = entries.flatMap(entry => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
     const source = entry as Record<string, unknown>;
     const safe = {
-      code: safeDiagnosticCode(source.code),
-      type: safeDiagnosticCode(source.type),
-      message: safeProviderText(source.message),
-      description: safeProviderText(source.description),
-      field: safeProviderText(source.field),
+      code: safeDiagnosticCode(safeProviderText(source.code, sensitive)),
+      type: safeDiagnosticCode(safeProviderText(source.type, sensitive)),
+      message: safeProviderText(source.message, sensitive),
+      description: safeProviderText(source.description, sensitive),
+      field: safeProviderText(source.field, sensitive),
     };
     return Object.values(safe).some(Boolean) ? [safe] : [];
   });
@@ -142,6 +146,11 @@ function parseOrder(value: unknown): MercadoPagoOrder {
         ticket_url: text(rawMethod?.ticket_url, 2048),
         qr_code: text(rawMethod?.qr_code, 8192),
         qr_code_base64: text(rawMethod?.qr_code_base64, 262144),
+        ...(methodType === 'credit_card' ? {
+          installments: typeof rawMethod?.installments === 'number' && Number.isInteger(rawMethod.installments)
+            ? rawMethod.installments : null,
+          challenge_url: challengeUrl(rawMethod?.transaction_security),
+        } : {}),
       },
     };
   }
@@ -149,7 +158,7 @@ function parseOrder(value: unknown): MercadoPagoOrder {
     id,
     external_reference: externalReference,
     total_amount: totalAmount,
-    currency_id: text(input.currency_id, 3) ?? 'BRL',
+    currency_id: text(input.currency_id, 3) ?? text(input.currency, 3) ?? 'BRL',
     status,
     status_detail: statusDetail,
     user_id: input.user_id === undefined || input.user_id === null ? null : String(input.user_id),
@@ -159,7 +168,17 @@ function parseOrder(value: unknown): MercadoPagoOrder {
   };
 }
 
-async function request(path: string, init: RequestInit, fetchImplementation: Fetch): Promise<MercadoPagoOrder> {
+function challengeUrl(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = text((value as Record<string, unknown>).url, 4096);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
+
+async function request(path: string, init: RequestInit, fetchImplementation: Fetch, sensitive: string[] = [], strictDiagnostic = false): Promise<MercadoPagoOrder> {
   const { accessToken } = configuration();
   const operation = init.method === 'POST' ? 'POST /v1/orders' : 'GET /v1/orders/{id}';
   let response: Response;
@@ -186,15 +205,23 @@ async function request(path: string, init: RequestInit, fetchImplementation: Fet
     const diagnostic = {
       operation,
       httpStatus: response.status,
-      error: safeDiagnosticCode(error.error) ?? safeProviderText(error.error),
-      code: safeDiagnosticCode(error.code),
-      message: safeProviderText(error.message),
-      cause: safeProviderCause(error.cause),
+      error: strictDiagnostic ? undefined : safeDiagnosticCode(safeProviderText(error.error, sensitive)) ?? safeProviderText(error.error, sensitive),
+      code: strictDiagnostic ? 'provider_http_error' : safeDiagnosticCode(safeProviderText(error.code, sensitive)),
+      message: strictDiagnostic ? undefined : safeProviderText(error.message, sensitive),
+      cause: strictDiagnostic ? undefined : safeProviderCause(error.cause, sensitive),
       requestId: safeDiagnosticCode(response.headers.get('x-request-id'))
         ?? safeDiagnosticCode(response.headers.get('x-correlation-id'))
         ?? safeDiagnosticCode(error.request_id),
       requestSummary: operation === 'POST /v1/orders' ? safeOrderRequestSummary(init.body) : undefined,
     };
+    // The provider can echo request values in error messages. Card inputs are
+    // request-local and must never escape through diagnostics or Error objects.
+    for (const key of Object.keys(diagnostic) as Array<keyof typeof diagnostic>) {
+      const value = diagnostic[key];
+      if (typeof value === 'string' && sensitive.some(secret => secret && value.includes(secret))) {
+        Object.assign(diagnostic, { [key]: '[redacted]' });
+      }
+    }
     logDevelopmentDiagnostic('mercado-pago', diagnostic);
     throw new MercadoPagoError('unavailable', diagnostic);
   }
@@ -207,7 +234,7 @@ async function request(path: string, init: RequestInit, fetchImplementation: Fet
   }
 }
 
-export function createPixOrder(input: {
+type OrderCreationInput = {
   amount: string | number;
   giftId: string;
   giftName: string;
@@ -215,12 +242,21 @@ export function createPixOrder(input: {
   idempotencyKey: string;
   payerEmail: string;
   payerName: string;
-}, fetchImplementation: Fetch = fetch) {
+};
+
+function orderBody(input: OrderCreationInput) {
   const amount = normalizeMercadoPagoAmount(input.amount);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.giftId) ||
       !input.giftName?.trim() || input.giftName.length > 150) {
     throw new MercadoPagoError('invalid_response');
   }
+  return { type: 'online', processing_mode: 'automatic', total_amount: amount,
+    external_reference: input.externalReference,
+    items: [{ title: input.giftName, quantity: 1, unit_price: amount }] };
+}
+
+export function createPixOrder(input: OrderCreationInput, fetchImplementation: Fetch = fetch) {
+  const body = orderBody(input);
   const { environment } = configuration();
   const payer = environment === 'test'
     ? { email: 'test_user_br@testuser.com', first_name: 'APRO' }
@@ -229,19 +265,36 @@ export function createPixOrder(input: {
     method: 'POST',
     headers: { 'X-Idempotency-Key': input.idempotencyKey },
     body: JSON.stringify({
-      type: 'online',
-      processing_mode: 'automatic',
-      total_amount: amount,
-      external_reference: input.externalReference,
-      items: [{ title: input.giftName, quantity: 1, unit_price: amount }],
+      ...body,
       payer,
       transactions: { payments: [{
-        amount,
+        amount: body.total_amount,
         payment_method: { id: 'pix', type: 'bank_transfer' },
         expiration_time: 'PT30M',
       }] },
     }),
   }, fetchImplementation);
+}
+
+export function createCreditCardOrder(input: OrderCreationInput & CreditCardInput, fetchImplementation: Fetch = fetch) {
+  const card = parseContributionPayment({ payment_method: 'credit_card', ...input });
+  if (card.payment_method !== 'credit_card') throw new MercadoPagoError('invalid_response');
+  const body = orderBody(input);
+  const { environment } = configuration();
+  const payer = environment === 'test'
+    ? { email: 'test@testuser.com', ...(card.payer ?? {}) }
+    : { email: input.payerEmail, first_name: input.payerName, ...(card.payer ?? {}) };
+  return request('/v1/orders', {
+    method: 'POST',
+    headers: { 'X-Idempotency-Key': input.idempotencyKey,
+      ...(card.device_id ? { 'X-meli-session-id': card.device_id } : {}) },
+    body: JSON.stringify({ ...body, payer,
+      config: { online: { transaction_security: { validation: 'on_fraud_risk', liability_shift: 'required' } } },
+      transactions: { payments: [{ amount: body.total_amount, payment_method: {
+        id: card.payment_method_id, type: 'credit_card', token: card.card_token, installments: card.installments,
+      } }] },
+    }),
+  }, fetchImplementation, [card.card_token, card.device_id ?? '', card.payer?.identification.number ?? '', input.payerEmail, input.payerName]);
 }
 
 export function normalizeMercadoPagoAmount(value: string | number): string {
@@ -259,14 +312,17 @@ export function normalizeMercadoPagoAmount(value: string | number): string {
   return `${whole}.${fraction.padEnd(2, '0')}`;
 }
 
-export function getOrder(id: string, fetchImplementation: Fetch = fetch) {
+export function getOrder(id: string, fetchImplementation: Fetch = fetch, strictDiagnostic = false) {
   if (!/^[A-Za-z0-9_-]{1,255}$/.test(id)) throw new MercadoPagoError('invalid_response');
-  return request(`/v1/orders/${encodeURIComponent(id)}`, { method: 'GET' }, fetchImplementation);
+  return request(`/v1/orders/${encodeURIComponent(id)}`, { method: 'GET' }, fetchImplementation, [], strictDiagnostic);
 }
 
 export function assertExpectedOrder(order: MercadoPagoOrder, expected: {
   amount: string | number;
   externalReference: string;
+  paymentMethod?: 'pix' | 'credit_card';
+  paymentMethodId?: string;
+  installments?: number | null;
 }) {
   const cents = (value: string) => {
     if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
@@ -278,10 +334,15 @@ export function assertExpectedOrder(order: MercadoPagoOrder, expected: {
   if (orderAmount === null || expectedAmount === null || order.external_reference !== expected.externalReference || orderAmount !== expectedAmount || order.currency_id !== 'BRL') {
     throw new MercadoPagoError('invalid_response');
   }
+  const card = expected.paymentMethod === 'credit_card';
+  if (card && !order.payment) throw new MercadoPagoError('invalid_response');
   if (order.payment && (
     cents(order.payment.amount) !== expectedAmount ||
-    order.payment.payment_method.id !== 'pix' ||
-    order.payment.payment_method.type !== 'bank_transfer'
+    order.payment.payment_method.id !== (card ? expected.paymentMethodId : 'pix') ||
+    order.payment.payment_method.type !== (card ? 'credit_card' : 'bank_transfer') ||
+    (card && order.payment.payment_method.installments !== expected.installments) ||
+    (card && order.status === 'processed' && order.status_detail === 'accredited' &&
+      (order.payment.status !== 'processed' || order.payment.status_detail !== 'accredited'))
   )) {
     throw new MercadoPagoError('invalid_response');
   }

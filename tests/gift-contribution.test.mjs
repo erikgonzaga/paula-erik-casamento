@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { typescriptModule } from './typescript-fixture.mjs';
 
-const source = await readFile(new URL('../src/lib/gifts/contribution.ts', import.meta.url), 'utf8');
+const source = (await readFile(new URL('../src/lib/gifts/contribution.ts', import.meta.url), 'utf8'))
+  .replace("from '@/lib/payments/contracts'", `from '${await typescriptModule('../src/lib/payments/contracts.ts')}'`);
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
 });
@@ -32,6 +34,7 @@ const fixed = { ...goal, funding_mode: 'fixed', target_amount: '75.00', gift_typ
 function stored(contribution, paymentStatus = 'pending') {
   return {
     payment_environment: contribution.payment_environment,
+    payment_method: contribution.payment_method,
     id: '40000000-0000-4000-8000-000000000001',
     gift_id: contribution.gift_id,
     contributor_name: contribution.contributor_name,

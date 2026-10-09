@@ -1,7 +1,7 @@
 # Cartão de crédito — contrato, etapa 1
 
-Preparação local em `202610070003_credit_card_domain.sql`. Não aplicada remotamente.
-Nenhum checkout de cartão, tokenização ou chamada ao Mercado Pago foi implementado.
+`202610070003_credit_card_domain.sql` foi aplicada e validada em produção, conforme confirmado pelo casal.
+Esta etapa preparou somente persistência. A etapa backend seguinte está em [Etapa 2](CARTAO-CREDITO-ETAPA2.md).
 
 ## Contrato persistente
 
@@ -28,11 +28,11 @@ As RPCs de claim, submission e reconciliation mantêm suas assinaturas, permiss�
 O trigger preenche os novos campos omitidos pelo claim Pix existente. Uma nova tentativa de cartão
 precisa de metadados explícitos; o claim atual não inicia cartão. Submission e reconciliation
 continuam genéricos e preservam a confirmação exclusiva por processed/accredited e o isolamento de ambiente.
-As rotas públicas e o serviço ativo continuam Pix nesta etapa.
+As rotas públicas e o serviço ativo continuaram Pix na etapa 1; o backend de cartão está separado na etapa 2.
 
 A migration segue o padrão de aplicação única do projeto. Reexecução ou schema parcialmente aplicado
 abortam a transação antes de alterar dados. Não é uma migration idempotente com reexecução silenciosa.
-Não executar `supabase db push` nem aplicar no remoto antes da revisão.
+Não reexecutar esta migration aplicada nem executar `supabase db push`.
 
 ## Ajustes financeiros
 

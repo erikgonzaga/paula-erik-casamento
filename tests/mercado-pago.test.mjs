@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { typescriptModule } from './typescript-fixture.mjs';
+
+const contractsUrl = await typescriptModule('../src/lib/payments/contracts.ts');
 
 const diagnosticSource = await readFile(new URL('../src/lib/server-diagnostics.ts', import.meta.url), 'utf8');
 const diagnosticOutput = ts.transpileModule(diagnosticSource, {
@@ -11,6 +14,7 @@ const diagnosticOutput = ts.transpileModule(diagnosticSource, {
 const diagnosticUrl = `data:text/javascript;base64,${Buffer.from(diagnosticOutput).toString('base64')}`;
 const source = (await readFile(new URL('../src/lib/payments/mercado-pago/client.ts', import.meta.url), 'utf8'))
   .replace("import 'server-only';", '')
+  .replace("from '@/lib/payments/contracts'", `from '${contractsUrl}'`)
   .replace("from '@/lib/server-diagnostics'", `from '${diagnosticUrl}'`);
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -248,6 +252,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
   const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
   const attempt = {
     payment_environment: 'test',
+    payment_method: 'pix', installments: null, provider_payment_method_id: 'pix',
     id: '60000000-0000-4000-8000-000000000001',
     contribution_id: '40000000-0000-4000-8000-000000000001',
     provider_idempotency_key: '50000000-0000-4000-8000-000000000001',
@@ -261,6 +266,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
   };
   const contribution = {
     payment_environment: 'test',
+    payment_method: 'pix',
     id: attempt.contribution_id,
     gift_id: giftItem.giftId,
     payment_status: 'pending',
@@ -287,6 +293,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
       creations.push(input);
       return ${JSON.stringify(response)};
     }
+    export async function createCreditCardOrder() { throw new Error('unexpected card POST'); }
     export function assertExpectedOrder() {}
     export async function getOrder() { throw new Error('unexpected GET'); }
   `);
@@ -297,6 +304,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
   const serviceSource = (await readFile(new URL('../src/services/gift-payments.ts', import.meta.url), 'utf8'))
     .replace("import 'server-only';", '')
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
+    .replace("from '@/lib/payments/contracts'", `from '${contractsUrl}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)
     .replace("from '@/lib/supabase/server'", `from '${databaseUrl}'`)
     .replace("from '@/services/gift-contributions'", `from '${pendingUrl}'`);

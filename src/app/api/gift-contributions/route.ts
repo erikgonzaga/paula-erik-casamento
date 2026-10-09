@@ -21,6 +21,10 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = await readBody(request);
     await limit(request, 'gift-contribution', 10);
+    // Backend stage 2 only: card checkout is not enabled for public guests yet.
+    if (body && typeof body === 'object' && 'payment_method' in body && body.payment_method === 'credit_card') {
+      throw new GiftContributionError(409, 'credit_card_unavailable', 'Pagamento por cartão ainda não está disponível.');
+    }
     return json(await createGiftPayment(body), 201);
   } catch (error) {
     if (error instanceof GiftContributionError || error instanceof InvitationError) {

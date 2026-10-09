@@ -21,7 +21,7 @@ export type PendingContribution = {
   contributor_email: string;
   amount: string;
   payment_status: 'pending';
-  payment_method: 'pix';
+  payment_method: 'pix' | 'credit_card';
   external_reference: null;
   message: string | null;
   vest_name: string | null;
@@ -41,6 +41,7 @@ export type ExistingContribution = {
   amount: string;
   contributor_email: string;
   expires_at: string;
+  payment_method: 'pix' | 'credit_card';
 };
 
 type NormalizedRequest = Omit<PendingContribution, 'payment_environment' | 'request_fingerprint' | 'amount' | 'payment_status' | 'payment_method' |
@@ -48,6 +49,7 @@ type NormalizedRequest = Omit<PendingContribution, 'payment_environment' | 'requ
     amount: unknown;
     vest_name: string | null;
     regional_division: string | null;
+    payment: ContributionPaymentInput;
   };
 
 export class GiftContributionError extends Error {
@@ -60,6 +62,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const allowedKeys = new Set([
   'idempotency_key', 'gift_id', 'amount', 'contributor_name', 'contributor_phone', 'contributor_email', 'message', 'vest_name', 'regional_division',
+  'payment_method', 'card_token', 'payment_method_id', 'installments', 'payer', 'device_id',
 ]);
 const zeroCents = BigInt(0);
 const hundredCents = BigInt(100);
@@ -145,7 +148,11 @@ function validateRequest(value: unknown): NormalizedRequest {
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new GiftContributionError(400, 'invalid_email', 'Informe um e-mail válido.');
   }
+  let payment: ContributionPaymentInput;
+  try { payment = parseContributionPayment(input); }
+  catch { throw new GiftContributionError(400, 'invalid_payment', 'Confira os dados do pagamento.'); }
   return {
+    payment,
     idempotency_key: input.idempotency_key,
     gift_id: input.gift_id,
     amount: input.amount,
@@ -193,7 +200,7 @@ function materializeContribution(
     contributor_email: request.contributor_email,
     amount: centsToDatabase(amount),
     payment_status: 'pending',
-    payment_method: 'pix',
+    payment_method: request.payment.payment_method,
     external_reference: null,
     message: request.message,
     vest_name: gift.gift_type === 'insanos' ? request.vest_name : null,
@@ -202,9 +209,9 @@ function materializeContribution(
   };
 }
 
-function fingerprintContribution(contribution: PendingContributionBase): string {
+function fingerprintContribution(contribution: PendingContributionBase, payment: ContributionPaymentInput): string {
   // Ordered JSON prevents representation differences; only the SHA-256 digest is persisted.
-  const canonical = JSON.stringify([
+  const fields: unknown[] = [
     contribution.gift_id,
     contribution.amount,
     contribution.contributor_name,
@@ -214,12 +221,14 @@ function fingerprintContribution(contribution: PendingContributionBase): string 
     contribution.vest_name,
     contribution.regional_division,
     contribution.payment_method,
-  ]);
+  ];
+  if (payment.payment_method === 'credit_card') fields.push(payment.installments, payment.payment_method_id);
+  const canonical = JSON.stringify(fields);
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
-function withFingerprint(contribution: PendingContributionBase): PendingContribution {
-  return { ...contribution, request_fingerprint: fingerprintContribution(contribution) };
+function withFingerprint(contribution: PendingContributionBase, payment: ContributionPaymentInput): PendingContribution {
+  return { ...contribution, request_fingerprint: fingerprintContribution(contribution, payment) };
 }
 
 function validateContributionAvailability(
@@ -246,7 +255,7 @@ export function preparePendingContribution(
   environment: 'test' | 'production' = 'production',
 ): PendingContribution {
   const request = validateRequest(value);
-  const contribution = withFingerprint(materializeContribution(request, gift, environment));
+  const contribution = withFingerprint(materializeContribution(request, gift, environment), request.payment);
   validateContributionAvailability(gift!, progress);
   return contribution;
 }
@@ -274,7 +283,7 @@ export async function createPendingContributionWith(
 ) {
   const request = validateRequest(value);
   const gift = await dependencies.getGift(request.gift_id);
-  const contribution = withFingerprint(materializeContribution(request, gift, environment));
+  const contribution = withFingerprint(materializeContribution(request, gift, environment), request.payment);
   await dependencies.expirePending(request.idempotency_key);
   const existing = await dependencies.getExisting(request.idempotency_key);
   if (existing) return existingResult(existing, contribution.request_fingerprint, environment);
@@ -302,3 +311,4 @@ export async function createPendingContributionWith(
   }
 }
 import { createHash } from 'node:crypto';
+import { parseContributionPayment, type ContributionPaymentInput } from '@/lib/payments/contracts';
