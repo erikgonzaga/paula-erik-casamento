@@ -20,3 +20,15 @@
 .close{display:grid;place-items:center;padding:0}
 @media(max-width:640px){.filters{justify-content:center;flex-wrap:wrap;overflow-x:visible}}
 @media(max-width:370px){.filters{max-width:190px;margin-inline:auto}}
+/* Card checkout needs more room than the editorial/Pix detail column.
+   CSS applies before the Brick mount effect; no resize-driven remounts. */
+.modal:has([aria-label="Pagamento com cartão de crédito"]){width:min(1120px,100%);max-width:1120px}
+.modalBody:has([aria-label="Pagamento com cartão de crédito"]){grid-template-columns:minmax(0,.65fr) minmax(520px,1.35fr)}
+.modalForm:has([aria-label="Pagamento com cartão de crédito"]){width:100%;min-width:0}
+@media(max-width:1100px){
+  .modalBody:has([aria-label="Pagamento com cartão de crédito"]){display:block}
+  .modalBody:has([aria-label="Pagamento com cartão de crédito"]) .description{margin:22px 0 30px}
+  .modalBody:has([aria-label="Pagamento com cartão de crédito"]) .modalFunding{margin-block:18px}
+}
+@media(max-width:900px){.modal:has([aria-label="Pagamento com cartão de crédito"]){max-width:760px}}
+@media(max-width:640px){.modalBody:has([aria-label="Pagamento com cartão de crédito"]){padding-inline:16px}}

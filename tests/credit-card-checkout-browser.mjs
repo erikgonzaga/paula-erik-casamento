@@ -73,7 +73,9 @@ try {
       window.MercadoPago = class { bricks() { return { create: async (type, id, settings) => {
         window.__brickQA.created++;
         const host = document.getElementById(id);
-        host.innerHTML = '<form style="display:grid;gap:16px"><p>FORMULÁRIO SDK SIMULADO</p><label style="display:grid;gap:8px">Dados do cartão no SDK<input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Campos seguros do provedor" disabled /></label><label style="display:grid;gap:8px">Parcelas<select style="width:100%;min-width:0;padding:12px;border:1px solid #c7bda8;border-radius:6px;font:inherit"><option>12x disponibilizadas pelo provedor</option></select></label><button style="padding:12px" type="submit">PAGAR (SDK SIMULADO)</button></form>';
+        host.dataset.mountWidth = String(host.getBoundingClientRect().width);
+        host.innerHTML = '<form data-mock-brick style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px;width:100%;line-height:1.5"><p>FORMULÁRIO SDK SIMULADO</p><label style="display:grid;gap:8px"><span data-mock-label>Dados do cartão no SDK</span><input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Campos seguros do provedor" disabled /></label><button type="button" data-expand style="padding:12px">MOSTRAR PARCELAS E DOCUMENTO</button><div data-extra hidden><label style="display:grid;gap:8px"><span data-mock-label>Parcelamento disponível</span><select style="width:100%;min-width:0;padding:12px;border:1px solid #c7bda8;border-radius:6px;font:inherit"><option>10x R$ 24,13</option></select></label><label style="display:grid;gap:8px;margin-top:16px"><span data-mock-label>Documento do titular do cartão</span><input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Documento fictício" /></label><p role="alert" style="margin-top:16px">Confira o documento do titular e escolha uma opção de parcelamento disponível antes de continuar com este pagamento simulado.</p></div><button style="padding:12px" type="submit">PAGAR (SDK SIMULADO)</button></form>';
+        host.querySelector('[data-expand]').onclick = () => { host.querySelector('[data-extra]').hidden = false; };
         host.querySelector('form').onsubmit = async event => { event.preventDefault(); await settings.callbacks.onSubmit({ token: 'MOCK_TEMP_TOKEN', payment_method_id: 'master', installments: 12 }, { paymentTypeId: 'credit_card' }); };
         settings.callbacks.onReady();
         return { unmount: async () => { window.__brickQA.unmounted++; host.innerHTML = ''; } };
@@ -88,7 +90,7 @@ try {
     if (url.origin === baseUrl) return route.continue();
     return route.abort(); // Blocks real provider, tokenization and telemetry.
   });
-  for (const width of [390, 768, 1440]) {
+  for (const width of [390, 768, 1024, 1440]) {
     challengeComplete = false;
     const sdkBefore = sdkRequests;
     await page.setViewportSize({ width, height: 1100 });
@@ -102,8 +104,34 @@ try {
     await dialog.getByRole('button', { name: 'Cartão de crédito', exact: true }).click(); await dialog.getByRole('button', { name: 'CONTINUAR', exact: true }).click();
     await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).waitFor();
     assert.equal(sdkRequests, sdkBefore + 1);
+    const brick = dialog.locator('section[aria-label="Pagamento com cartão de crédito"]');
+    const beforeHeight = (await brick.boundingBox()).height;
+    await dialog.getByRole('button', { name: 'MOSTRAR PARCELAS E DOCUMENTO' }).click();
+    const geometry = await brick.evaluate(element => ({
+      width: element.getBoundingClientRect().width,
+      mountWidth: Number(element.querySelector('[data-mount-width]').dataset.mountWidth),
+      height: element.getBoundingClientRect().height,
+      overflow: element.scrollWidth > element.clientWidth,
+      labels: [...element.querySelectorAll('[data-mock-label]')].map(label => ({ width: label.getBoundingClientRect().width, height: label.getBoundingClientRect().height })),
+    }));
+    const minimum = width === 390 ? 300 : width === 768 ? 600 : width === 1024 ? 800 : 600;
+    assert.ok(geometry.width >= minimum, `${width}px: Brick width ${geometry.width}`);
+    assert.ok(geometry.mountWidth >= minimum, `${width}px: narrow initial mount`);
+    assert.ok(geometry.height > beforeHeight, 'Dynamic fields must grow the container');
+    assert.equal(geometry.overflow, false);
+    assert.ok(geometry.labels.every(label => label.width >= 280 && label.height < 60), 'No vertically squeezed labels');
+    assert.ok(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth), 'No modal horizontal overflow');
+    await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).scrollIntoViewIfNeeded();
+    const payBox = await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).boundingBox();
+    assert.ok(payBox.y >= 0 && payBox.y + payBox.height <= 1100, 'Pay button reachable through vertical scroll');
     await dialog.screenshot({ path: `${output}/brick-mock-${width}.png` });
     assert.equal((await page.evaluate(() => window.__brickQA)).created, 1);
+    if (width === 1440) {
+      await page.setViewportSize({ width: 768, height: 1100 });
+      assert.ok((await brick.boundingBox()).width >= 600);
+      assert.equal((await page.evaluate(() => window.__brickQA)).created, 1, 'Resizing must not duplicate or reset the Brick');
+      await page.setViewportSize({ width, height: 1100 });
+    }
     await dialog.getByRole('button', { name: 'VOLTAR AO PIX' }).click();
     assert.equal((await page.evaluate(() => window.__brickQA)).unmounted, 1);
     await dialog.getByRole('button', { name: 'Cartão de crédito', exact: true }).click(); await dialog.getByRole('button', { name: 'CONTINUAR', exact: true }).click();
