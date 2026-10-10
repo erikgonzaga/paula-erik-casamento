@@ -1,4 +1,5 @@
 import 'server-only';
+import { previewPaymentCheckpoint, previewPaymentFailure, type PaymentDiagnosticContext } from '@/lib/server-diagnostics';
 
 import { randomUUID } from 'node:crypto';
 import { GiftContributionError } from '@/lib/gifts/contribution';
@@ -124,6 +125,7 @@ function publicResult(status: ContributionStatus, attempt: PaymentAttempt | null
 }
 
 async function claimAttempt(contributionId: string, payment?: ContributionPaymentInput) {
+  try {
   const card = payment?.payment_method === 'credit_card' ? payment : null;
   const rows = await database<PaymentAttempt[]>(card ? 'rpc/claim_gift_card_payment_attempt' : 'rpc/claim_gift_payment_attempt_for_environment', {
     p_contribution_id: contributionId,
@@ -138,8 +140,18 @@ async function claimAttempt(contributionId: string, payment?: ContributionPaymen
   if (rows[0].contribution_id !== contributionId) throw new Error('payment_contribution_mismatch');
   // The unchanged Pix RPC omits method metadata; its existing inserts are
   // protected by the contribution/method trigger from stage 1.
-  return card ? rows[0] : { ...rows[0], payment_method: 'pix' as const,
+  const claimed = card ? rows[0] : { ...rows[0], payment_method: 'pix' as const,
     installments: null, provider_payment_method_id: 'pix' };
+  const context = { contribution_id: contributionId, attempt_id: claimed.id,
+    payment_method: claimed.payment_method, payment_environment: claimed.payment_environment };
+  previewPaymentCheckpoint('claim_ok', context);
+  if (!claimed.provider_order_id && !claimed.can_create) previewPaymentCheckpoint('claim_creation_deferred', context);
+  return claimed;
+  } catch (error) {
+    previewPaymentFailure('claim', { contribution_id: contributionId,
+      payment_method: payment?.payment_method ?? 'pix', payment_environment: process.env.PAYMENTS_ENVIRONMENT }, error);
+    throw error;
+  }
 }
 
 async function getAttemptByContribution(contributionId: string) {
@@ -163,6 +175,8 @@ async function reconcile(attempt: PaymentAttempt, order: MercadoPagoOrder): Prom
     paymentMethod: method.payment_method, paymentMethodId: method.provider_payment_method_id,
     installments: method.installments });
   if (attempt.provider_order_id && attempt.provider_order_id !== order.id) throw new Error('payment_order_mismatch');
+  previewPaymentCheckpoint('provider_validation_ok', { contribution_id: attempt.contribution_id,
+    attempt_id: attempt.id, payment_method: attempt.payment_method, payment_environment: attempt.payment_environment });
   const rows = await database<string>('rpc/reconcile_gift_payment_attempt_for_environment', {
     p_attempt_id: attempt.id,
     p_environment: paymentEnvironment(),
@@ -190,6 +204,10 @@ async function refreshAttempt(attempt: PaymentAttempt) {
 }
 
 async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredContribution, payment?: ContributionPaymentInput) {
+  const context: PaymentDiagnosticContext = { contribution_id: contribution.id, attempt_id: attempt.id,
+    payment_method: attempt.payment_method, payment_environment: attempt.payment_environment };
+  let stage = 'submission_preparation';
+  try {
   assertPaymentEnvironment(attempt.payment_environment);
   assertPaymentEnvironment(contribution.payment_environment);
   const card: CreditCardInput | null = payment?.payment_method === 'credit_card' ? payment : null;
@@ -211,15 +229,19 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
   }
   // The database makes the deadline decision while holding the contribution
   // lock and records that a request may have reached the provider.
+  stage = 'begin_submission';
   const maySend = await database<boolean>('rpc/begin_gift_order_submission_for_environment', {
     p_attempt_id: attempt.id,
     p_environment: paymentEnvironment(),
   });
+  if (maySend) previewPaymentCheckpoint('begin_submission_ok', context);
   if (!maySend || isPastDeadline(attempt)) {
+    previewPaymentCheckpoint('submission_not_sent', context);
     const latest = await claimAttempt(contribution.id, payment);
     return { attempt: latest, status: statusWithoutOrder(latest), order: undefined };
   }
   const input = {
+    diagnosticContext: context,
     amount: attempt.amount,
     giftId: gift.id,
     giftName: gift.name,
@@ -228,13 +250,24 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
     payerEmail: contribution.contributor_email,
     payerName: contribution.contributor_name,
   };
+  stage = 'before_provider_post';
+  previewPaymentCheckpoint(stage, context);
   const order = card ? await createCreditCardOrder({ ...input, ...card }) : await createPixOrder(input);
+  stage = 'provider_validation_reconciliation';
   const status = await reconcile(attempt, order);
+  previewPaymentCheckpoint('reconciliation_ok', context);
+  stage = 'order_persistence_read';
+  const persisted = await getAttemptByContribution(contribution.id) ?? attempt;
+  if (persisted.provider_order_id) previewPaymentCheckpoint('order_persisted', context);
   return {
-    attempt: await getAttemptByContribution(contribution.id) ?? attempt,
+    attempt: persisted,
     status,
     order,
   };
+  } catch (error) {
+    previewPaymentFailure(stage, context, error);
+    throw error;
+  }
 }
 
 export async function createGiftPayment(value: unknown): Promise<GiftPaymentResult> {

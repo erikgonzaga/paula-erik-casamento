@@ -12,6 +12,7 @@ const diagnosticOutput = ts.transpileModule(diagnosticSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const diagnosticUrl = `data:text/javascript;base64,${Buffer.from(diagnosticOutput).toString('base64')}`;
+const previewDiagnostics = await import(diagnosticUrl);
 const source = (await readFile(new URL('../src/lib/payments/mercado-pago/client.ts', import.meta.url), 'utf8'))
   .replace("import 'server-only';", '')
   .replace("from '@/lib/payments/contracts'", `from '${contractsUrl}'`)
@@ -72,6 +73,56 @@ process.env.PAYMENTS_ENVIRONMENT = 'test';
 delete process.env.MERCADO_PAGO_USER_ID;
 delete process.env.MERCADO_PAGO_APPLICATION_ID;
 process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'TEST_WEBHOOK_SECRET_NOT_REAL';
+
+test('temporary diagnostics are Preview TEST only, sanitized, and do not change Pix serialization', async () => {
+  const keys = ['VERCEL_ENV', 'NODE_ENV', 'PAYMENTS_ENVIRONMENT', 'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'];
+  const saved = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const originalInfo = console.info, originalError = console.error;
+  const logs = [];
+  console.info = (...args) => logs.push(args);
+  console.error = (...args) => logs.push(args);
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.ENABLE_CREDIT_CARD_CHECKOUT = 'true';
+    process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = 'MOCK_PUBLIC_KEY_SENSITIVE';
+    const { creditCardCheckoutEnabled } = await import(await typescriptModule('../src/lib/payments/card-checkout-policy.ts'));
+    for (const [vercel, environment, expected] of [['preview','test',true], ['production','test',false], ['preview','production',false], ['production','production',false]]) {
+      logs.length = 0;
+      process.env.VERCEL_ENV = vercel; process.env.PAYMENTS_ENVIRONMENT = environment;
+      creditCardCheckoutEnabled();
+      previewDiagnostics.previewPaymentFailure('before_provider_post', {}, new Error('MOCK_CARD_TOKEN_SENSITIVE'));
+      previewDiagnostics.logDevelopmentDiagnostic('mercado-pago', {
+        code: 'unavailable', message: 'MOCK_PAN_CVV_DOCUMENT_DEVICE_QR', requestSummary: 'MOCK_BODY', httpStatus: 400,
+      });
+      assert.equal(logs.length > 0, expected);
+      if (expected) {
+        const feature = logs.find(entry => entry[0] === '[payment-preview-feature]')[1];
+        assert.ok(Object.values(feature).every(value => typeof value === 'boolean'));
+        assert.equal(feature.creditCardCheckoutEnabled, true);
+        const serialized = JSON.stringify(logs);
+        for (const forbidden of ['MOCK_PUBLIC_KEY_SENSITIVE','MOCK_CARD_TOKEN_SENSITIVE','MOCK_PAN_CVV_DOCUMENT_DEVICE_QR','MOCK_BODY',process.env.MERCADO_PAGO_ACCESS_TOKEN]) assert.ok(!serialized.includes(forbidden));
+      }
+    }
+    process.env.VERCEL_ENV = 'preview'; process.env.PAYMENTS_ENVIRONMENT = 'test'; logs.length = 0;
+    const input = { amount: 50, giftId: 'c76c72a8-ad15-4095-8d07-fad27e8ec584', giftName: 'Fixture',
+      externalReference: 'gift-contribution-c76c72a8-ad15-4095-8d07-fad27e8ec584', idempotencyKey: 'fixture', payerName: 'PRIVATE_NAME', payerEmail: 'private@example.invalid' };
+    const bodies = [];
+    const fake = async (_url, init) => {
+      bodies.push(init.body);
+      return Response.json({ id: 'ORDMOCK', external_reference: input.externalReference, total_amount: '50.00', status: 'processing', status_detail: 'in_process', transactions: { payments: [] } }, { status: 201 });
+    };
+    await createPixOrder(input, fake);
+    assert.ok(logs.some(entry => entry[1]?.stage === 'provider_http_response'));
+    assert.ok(logs.some(entry => entry[1]?.stage === 'provider_parse_ok'));
+    process.env.VERCEL_ENV = 'production'; logs.length = 0;
+    await createPixOrder(input, fake);
+    assert.equal(bodies[0], bodies[1]); assert.equal(logs.length, 0);
+    assert.ok(!bodies[0].includes('diagnosticContext'));
+  } finally {
+    console.info = originalInfo; console.error = originalError;
+    for (const [key,value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
 
 test.after(() => {
   for (const [name, value] of Object.entries({
@@ -303,6 +354,7 @@ test('payment service reads the persisted gift and reuses the existing attempt o
   }`);
   const serviceSource = (await readFile(new URL('../src/services/gift-payments.ts', import.meta.url), 'utf8'))
     .replace("import 'server-only';", '')
+    .replace("from '@/lib/server-diagnostics'", `from '${diagnosticUrl}'`)
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
     .replace("from '@/lib/payments/contracts'", `from '${contractsUrl}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)

@@ -328,6 +328,7 @@ async function paymentServiceFixture({ attempt, orderStatus = 'processing', orde
   }`);
   const source = (await readFile(new URL('../src/services/gift-payments.ts', import.meta.url), 'utf8'))
     .replace("import 'server-only';", '')
+    .replace("from '@/lib/server-diagnostics'", `from '${await typescriptModule('../src/lib/server-diagnostics.ts')}'`)
     .replace("from '@/lib/gifts/contribution'", `from '${contributionUrl}'`)
     .replace("from '@/lib/payments/contracts'", `from '${await typescriptModule('../src/lib/payments/contracts.ts')}'`)
     .replace("from '@/lib/payments/mercado-pago/client'", `from '${clientUrl}'`)

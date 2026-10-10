@@ -131,6 +131,38 @@ test('card request contract rejects raw data and preserves stable payment finger
 test('card backend with PostgreSQL and mocked Orders, never real network', async t => {
   const db = await createDatabase();
   try {
+    await t.test('Preview TEST checkpoints preserve submission and exclude all transient card/PII data', async () => {
+      const savedPreview = process.env.VERCEL_ENV;
+      const savedInfo = console.info;
+      const logs = [];
+      const f = await fixture(db, { environment: 'test', post: ['processing', 'in_process'] });
+      try {
+        process.env.VERCEL_ENV = 'preview';
+        process.env.NODE_ENV = 'production';
+        console.info = (...args) => logs.push(args);
+        const input = await f.request();
+        const result = await f.service.createGiftPayment(input);
+        assert.equal(result.payment_status, 'pending');
+        assert.equal(f.http.filter(call => call.method === 'POST').length, 1);
+        const stages = logs.map(entry => entry[1]?.stage);
+        for (const stage of ['claim_ok','begin_submission_ok','before_provider_post','provider_http_response',
+          'provider_parse_ok','provider_validation_ok','reconciliation_ok','order_persisted']) assert.ok(stages.includes(stage), stage);
+        const text = JSON.stringify(logs);
+        for (const privateValue of [input.card_token, input.device_id, input.payer.identification.number,
+          input.contributor_name, input.contributor_email, input.contributor_phone,
+          process.env.MERCADO_PAGO_ACCESS_TOKEN, process.env.MERCADO_PAGO_WEBHOOK_SECRET]) assert.ok(!text.includes(privateValue));
+        const before = await f.state(input.idempotency_key);
+        await f.service.createGiftPayment(input);
+        const after = await f.state(input.idempotency_key);
+        assert.equal(f.http.filter(call => call.method === 'POST').length, 1);
+        assert.equal(before.provider_idempotency_key, after.provider_idempotency_key);
+        assert.equal(before.provider_order_id, after.provider_order_id);
+      } finally {
+        console.info = savedInfo;
+        if (savedPreview === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = savedPreview;
+        f.restore();
+      }
+    });
     await t.test('card RPC remains private, enforces metadata/environment and prevents Pix reuse', async () => {
       const signature = 'public.claim_gift_card_payment_attempt(uuid,text,uuid,numeric,text,integer)';
       for (const role of ['anon', 'authenticated']) assert.equal((await db.query('select has_function_privilege($1,$2,$3) as allowed', [role, signature, 'EXECUTE'])).rows[0].allowed, false);
