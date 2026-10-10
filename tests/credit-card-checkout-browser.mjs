@@ -74,8 +74,8 @@ try {
         window.__brickQA.created++;
         const host = document.getElementById(id);
         host.dataset.mountWidth = String(host.getBoundingClientRect().width);
-        host.innerHTML = '<form data-mock-brick style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px;width:100%;line-height:1.5"><p>FORMULÁRIO SDK SIMULADO</p><label style="display:grid;gap:8px"><span data-mock-label>Dados do cartão no SDK</span><input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Campos seguros do provedor" disabled /></label><button type="button" data-expand style="padding:12px">MOSTRAR PARCELAS E DOCUMENTO</button><div data-extra hidden><label style="display:grid;gap:8px"><span data-mock-label>Parcelamento disponível</span><select style="width:100%;min-width:0;padding:12px;border:1px solid #c7bda8;border-radius:6px;font:inherit"><option>10x R$ 24,13</option></select></label><label style="display:grid;gap:8px;margin-top:16px"><span data-mock-label>Documento do titular do cartão</span><input style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Documento fictício" /></label><p role="alert" style="margin-top:16px">Confira o documento do titular e escolha uma opção de parcelamento disponível antes de continuar com este pagamento simulado.</p></div><button style="padding:12px" type="submit">PAGAR (SDK SIMULADO)</button></form>';
-        host.querySelector('[data-expand]').onclick = () => { host.querySelector('[data-extra]').hidden = false; };
+        host.innerHTML = '<style>.mockControl{box-sizing:border-box;font:16px Arial}</style><form data-mock-brick style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px;width:100%;line-height:1.5"><p>FORMULÁRIO SDK SIMULADO</p><label style="display:grid;gap:8px"><span data-mock-label>Dados do cartão no SDK</span><input class="mockControl" style="width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px" placeholder="Campos seguros do provedor" disabled /></label><label style="display:grid;gap:8px">Validade<input class="mockControl" placeholder="MM/AA" disabled style="width:100%" /></label><label style="display:grid;gap:8px">CVV<input class="mockControl" disabled style="width:100%" /></label><label style="display:grid;gap:8px">Nome do titular<input class="mockControl" disabled style="width:100%" /></label><button type="button" data-expand style="padding:12px">MOSTRAR PARCELAS E DOCUMENTO</button><div data-extra hidden></div><button style="padding:12px" type="submit">PAGAR (SDK SIMULADO)</button></form>';
+        host.querySelector('[data-expand]').onclick = () => { host.querySelector('[data-extra]').innerHTML = "<h2 data-first-dynamic style=\\"font:16px Arial;margin:0\\">Op\\u00e7\\u00f5es de parcelamento</h2><label style=\\"display:grid;gap:8px\\"><span data-mock-label>Parcelamento dispon\\u00edvel</span><select class='mockControl' style=\\"width:100%;min-width:0;padding:12px;border:1px solid #c7bda8;border-radius:6px;font:inherit\\"><option>10x R$ 24,13</option></select></label><label style=\\"display:grid;gap:8px;margin-top:16px\\"><h2 data-mock-label style=\\"font:16px Arial;margin:0\\">Documento do titular do cart\\u00e3o</h2><input class='mockControl' style=\\"width:100%;padding:12px;border:1px solid #c7bda8;border-radius:6px\\" placeholder=\\"Documento fict\\u00edcio\\" /></label><p role=\\"alert\\" style=\\"margin-top:16px\\">Confira o documento do titular e escolha uma op\\u00e7\\u00e3o de parcelamento dispon\\u00edvel antes de continuar com este pagamento simulado.</p>"; host.querySelector('[data-extra]').hidden = false; };
         host.querySelector('form').onsubmit = async event => { event.preventDefault(); await settings.callbacks.onSubmit({ token: 'MOCK_TEMP_TOKEN', payment_method_id: 'master', installments: 12 }, { paymentTypeId: 'credit_card' }); };
         settings.callbacks.onReady();
         return { unmount: async () => { window.__brickQA.unmounted++; host.innerHTML = ''; } };
@@ -106,7 +106,51 @@ try {
     assert.equal(sdkRequests, sdkBefore + 1);
     const brick = dialog.locator('section[aria-label="Pagamento com cartão de crédito"]');
     const beforeHeight = (await brick.boundingBox()).height;
+    const initialStyles = await brick.evaluate(element => { const h = document.createElement('h2'); element.querySelector('[data-mp-brick-host]').append(h); const c = getComputedStyle(h); const result = { gridArea: c.gridArea, overflowWrap: c.overflowWrap, boxSizing: c.boxSizing }; h.remove(); return result; });
+    assert.equal(initialStyles.gridArea, 'auto'); assert.equal(initialStyles.overflowWrap, 'normal'); assert.equal(initialStyles.boxSizing, 'content-box');
+    assert.equal(await brick.locator('input').first().evaluate(element => getComputedStyle(element).boxSizing), 'border-box', 'SDK class must override neutral boundary');
+    const beforeLabel = await brick.locator('[data-mock-label]').first().evaluate(element => {
+      const style = getComputedStyle(element);
+      return { tag: element.tagName, width: element.getBoundingClientRect().width,
+        fontSize: style.fontSize, lineHeight: style.lineHeight, boxSizing: style.boxSizing,
+        overflowWrap: style.overflowWrap, wordBreak: style.wordBreak, whiteSpace: style.whiteSpace };
+    });
     await dialog.getByRole('button', { name: 'MOSTRAR PARCELAS E DOCUMENTO' }).click();
+    const afterLabel = await brick.locator('[data-mock-label]').first().evaluate(element => {
+      const style = getComputedStyle(element);
+      return { tag: element.tagName, width: element.getBoundingClientRect().width,
+        fontSize: style.fontSize, lineHeight: style.lineHeight, boxSizing: style.boxSizing,
+        overflowWrap: style.overflowWrap, wordBreak: style.wordBreak, whiteSpace: style.whiteSpace };
+    });
+    assert.deepEqual(afterLabel, beforeLabel, 'Existing label geometry/styles must survive the dynamic insertion');
+    const insertedAncestors = await brick.locator('[data-first-dynamic]').evaluate(element => {
+      const results = [];
+      for (let node = element; node && results.length < 5; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        results.push({ tag: node.tagName, display: style.display, width: style.width,
+          minWidth: style.minWidth, maxWidth: style.maxWidth, gridTemplateColumns: style.gridTemplateColumns,
+          gridArea: style.gridArea, flex: style.flex, position: style.position,
+          whiteSpace: style.whiteSpace, wordBreak: style.wordBreak, overflowWrap: style.overflowWrap,
+          fontSize: style.fontSize, lineHeight: style.lineHeight, boxSizing: style.boxSizing });
+      }
+      return results;
+    });
+    assert.equal(insertedAncestors[0].gridArea, 'auto');
+    const collision = await brick.locator('h2[data-mock-label]').evaluate(heading => {
+      const before = { columns: getComputedStyle(heading.parentElement).gridTemplateColumns,
+        gridArea: getComputedStyle(heading).gridArea };
+      const oldRule = document.createElement('style');
+      // Reintroduce the historical selector on this fixture only, never production.
+      oldRule.textContent = '[role="dialog"] h2 { grid-area:title; overflow-wrap:anywhere; }';
+      document.head.append(oldRule);
+      const leaked = { columns: getComputedStyle(heading.parentElement).gridTemplateColumns,
+        gridArea: getComputedStyle(heading).gridArea };
+      oldRule.remove();
+      return { before, leaked };
+    });
+    assert.equal(collision.leaked.gridArea, 'title');
+    assert.notEqual(collision.leaked.columns, collision.before.columns, 'Historical heading rule creates implicit grid tracks');
+    console.log(JSON.stringify({ fixtureViewport: width, beforeLabel, afterLabel, insertedAncestors }));
     const geometry = await brick.evaluate(element => ({
       width: element.getBoundingClientRect().width,
       mountWidth: Number(element.querySelector('[data-mount-width]').dataset.mountWidth),
@@ -119,6 +163,7 @@ try {
     assert.ok(geometry.mountWidth >= minimum, `${width}px: narrow initial mount`);
     assert.ok(geometry.height > beforeHeight, 'Dynamic fields must grow the container');
     assert.equal(geometry.overflow, false);
+    assert.equal(await brick.locator('h2[data-mock-label]').evaluate(element => getComputedStyle(element).gridArea), 'auto');
     assert.ok(geometry.labels.every(label => label.width >= 280 && label.height < 60), 'No vertically squeezed labels');
     assert.ok(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth), 'No modal horizontal overflow');
     await dialog.getByRole('button', { name: 'PAGAR (SDK SIMULADO)' }).scrollIntoViewIfNeeded();
