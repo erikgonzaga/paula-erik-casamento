@@ -642,3 +642,68 @@ test('webhook route processes only an SDK-validated notification and rejects inv
     assert.equal(processedCalls.length, 1, `${label} must not process an Order`);
   }
 });
+
+test('temporary identity diagnostic is gated, read-only, and never exposes credentials or provider PII', async () => {
+  const route = await import(await typescriptModule('../src/app/api/internal/mercado-pago-test-identity/route.ts'));
+  const saved = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const originalWarn = console.warn;
+  const logs = [];
+  const calls = [];
+  const token = 'secret-fixture-never-log';
+  const pii = 'private-fixture-never-log';
+  console.info = (...args) => logs.push(args);
+  console.warn = (...args) => logs.push(args);
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return Response.json({ id: 123456789, email: pii, name: pii, nickname: pii, phone: pii, address: pii, identification: pii });
+  };
+  try {
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = token;
+    for (const [vercel, payments] of [['production', 'test'], ['preview', 'production'], ['development', 'test'], ['preview', ''], ['', 'test']]) {
+      process.env.VERCEL_ENV = vercel;
+      process.env.PAYMENTS_ENVIRONMENT = payments;
+      assert.equal((await route.GET()).status, 404);
+    }
+    assert.equal(calls.length, 0);
+    assert.equal(logs.length, 0);
+    process.env.VERCEL_ENV = 'preview';
+    process.env.PAYMENTS_ENVIRONMENT = 'test';
+    const response = await route.GET();
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://api.mercadolibre.com/users/me');
+    assert.equal(calls[0].options.method, 'GET');
+    assert.equal(calls[0].options.headers.Authorization, `Bearer ${token}`);
+    assert.equal(calls[0].options.redirect, 'error');
+    assert.equal(calls[0].options.body, undefined);
+    assert.deepEqual(logs, [['[mercado-pago-test-identity]', { user_id: 123456789, environment: 'test' }]]);
+    assert.equal(route.HEAD().status, 404);
+    assert.equal(calls.length, 1);
+    for (const failure of ['http', 'network', 'invalid-id', 'invalid-json', 'missing-token']) {
+      logs.length = 0;
+      globalThis.fetch = async () => {
+        if (failure === 'network') throw new Error(token + pii);
+        if (failure === 'http') return Response.json({ message: token + pii }, { status: 401 });
+        if (failure === 'invalid-json') return new Response(pii);
+        return Response.json({ id: pii });
+      };
+      if (failure === 'missing-token') delete process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      const failed = await route.GET();
+      assert.equal(failed.status, 503);
+      assert.deepEqual(await failed.json(), { ok: false });
+      assert.deepEqual(logs, [['[mercado-pago-test-identity]', { ok: false, httpStatus: ['invalid-id', 'invalid-json'].includes(failure) ? 200 : failure === 'http' ? 401 : null }]]);
+      assert.equal(JSON.stringify(logs).includes(token), false);
+      assert.equal(JSON.stringify(logs).includes(pii), false);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.info = originalInfo;
+    console.warn = originalWarn;
+    for (const key of ['VERCEL_ENV', 'PAYMENTS_ENVIRONMENT', 'MERCADO_PAGO_ACCESS_TOKEN']) {
+      if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+    }
+  }
+});
