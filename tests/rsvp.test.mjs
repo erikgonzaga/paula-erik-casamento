@@ -235,3 +235,45 @@ test('public portal removes declined names after save and shows a neutral empty 
   dom.window.close();
  }
 });
+
+test('rollout RPC accepts complete legacy/new clients while declined history is immutable', async () => {
+ const { typescriptModule }=await import('./typescript-fixture.mjs');
+ const db=await createDatabase();
+ const databaseModule='data:text/javascript,export const database=(...args)=>globalThis.__rolloutRsvpDatabase(...args);';
+ const legacyInvitations='data:text/javascript,export const getInvitation=(id)=>globalThis.__rolloutLegacyInvitation(id);';
+ globalThis.__rolloutRsvpDatabase=async (_path,body)=>(await db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5) as value',
+  [body.p_group_id,JSON.stringify(body.p_guests),body.p_phone,body.p_dietary,body.p_notes])).rows[0].value;
+ globalThis.__rolloutLegacyInvitation=async group=>({guests:(await db.query('select id,type from guests where invitation_group_id=$1 and active order by id',[group])).rows});
+ try {
+  const {submitRsvp:legacySubmit}=await import(await typescriptModule('../src/services/rsvp.ts',{
+   '@/lib/supabase/server':databaseModule,'./invitations':legacyInvitations}));
+  const people=(await globalThis.__rolloutLegacyInvitation(ids.silva)).guests;
+  const all=people.map((p,i)=>({id:p.id,status:i===0?'declined':'confirmed',phone:p.type==='adult'?`1199999000${i+1}`:null}));
+  const payload=guests=>({guests,dietary_restrictions:'Grupo: sem lactose',notes:'Resposta revisada'});
+  await legacySubmit(ids.silva,payload(all));
+  const frozen=(await db.query('select * from guests where id=$1',[all[0].id])).rows[0];
+  const checkpoint=async()=>({guests:(await db.query('select * from guests order by id')).rows,rsvps:(await db.query('select * from rsvps order by id')).rows});
+  const oldPayload=all.map((p,i)=>i===0?{...p,phone:'11911112222'}:p);
+  await legacySubmit(ids.silva,payload(oldPayload));
+  assert.deepEqual((await db.query('select * from guests where id=$1',[all[0].id])).rows[0],frozen);
+  const groupResponse=(await db.query('select * from rsvps where invitation_group_id=$1',[ids.silva])).rows[0];
+  assert.equal(groupResponse.phone,all[1].phone,'redundant declined phone must not become group phone');
+  assert.equal(groupResponse.dietary_restrictions,'Grupo: sem lactose');assert.equal(groupResponse.notes,'Resposta revisada');
+  const rpc=list=>db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5)',[ids.silva,JSON.stringify(list),'11911112222','Outro texto','Outro texto']);
+  const other=(await db.query('select id from guests where invitation_group_id=$1',[ids.oliveira])).rows[0].id;
+  for(const invalid of [oldPayload.map((p,i)=>i===0?{...p,status:'confirmed'}:p),[oldPayload[0],oldPayload[1]],
+    [oldPayload[1],oldPayload[1]],[...oldPayload.slice(0,2),{id:other,status:'confirmed',phone:'11999992222'}]]){
+   const before=await checkpoint();await assert.rejects(rpc(invalid));assert.deepEqual(await checkpoint(),before);
+  }
+  const before=await checkpoint();await assert.rejects(legacySubmit(ids.silva,payload(oldPayload.map(p=>({...p,status:'confirmed'})))));assert.deepEqual(await checkpoint(),before);
+  await rpc(all.slice(1)); // New complete payload, same RPC.
+  await rpc(all.slice(1).map((p,i)=>({...p,status:i===0?'declined':'confirmed'})));
+  assert.deepEqual((await db.query('select * from guests where id=$1',[all[0].id])).rows[0],frozen);
+  await rpc([{...all[2],status:'declined'}]);
+  const finished=await checkpoint();
+  await legacySubmit(ids.silva,payload(oldPayload.map(p=>({...p,status:'declined'}))));
+  assert.deepEqual(await checkpoint(),finished,'all-declined old client is acknowledged with zero writes');
+  await assert.rejects(rpc([]));assert.deepEqual(await checkpoint(),finished);
+  assert.ok(finished.guests.filter(g=>g.invitation_group_id===ids.silva).every(g=>g.active&&g.attendance_status==='declined'));
+ } finally {delete globalThis.__rolloutRsvpDatabase;delete globalThis.__rolloutLegacyInvitation;await db.close();}
+});
