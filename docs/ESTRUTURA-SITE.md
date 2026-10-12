@@ -130,13 +130,13 @@ O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_defin
 
 ### RSVP
 
-- Todos os integrantes ativos que ainda não estão `declined` devem ser enviados uma única vez. Recusados anteriores são excluídos da leitura pública e rejeitados pela RPC, sem apagar seus dados.
+- Todos os integrantes ativos que ainda não estão `declined` devem ser enviados uma única vez. Recusados anteriores são excluídos da leitura pública. Durante o rollout, a RPC também aceita o payload legado completo de todos os ativos, desde que os já recusados continuem `declined`; esses registros redundantes não são atualizados. Payloads parciais/mistos ou tentativas de reativação são rejeitados.
 - Presença é `confirmed` ou `declined` por pessoa.
 - Adultos exigem telefone/WhatsApp individual; crianças ficam com telefone nulo.
 - Validação aceita caracteres comuns de telefone, exige 8–15 dígitos e limita a string a 32 caracteres.
 - Restrições alimentares e observações permanecem no registro de grupo.
 - Reabrir o convite recupera presença, telefones e textos para edição dos integrantes ainda editáveis. Quando todos recusam, o código continua válido, sem formulário nem nomes, com a mensagem “As respostas deste convite já foram registradas.” O Admin mantém todos os ativos.
-- Migration local `202610120001_rsvp_declined_public_final.sql`: substitui somente a RPC de gravação, preservando assinatura, permissões e atomicidade. Aplicação remota ainda pendente.
+- Migration local `202610120001_rsvp_declined_public_final.sql`: substitui somente a RPC de gravação, preservando assinatura, permissões e atomicidade. Aplicação remota ainda pendente. A RPC de transição pode preceder o deploy do novo código; o inverso não é seguro com a RPC antiga quando há recusados. Com todos recusados, o payload legado completo é reconhecido sem alterar registros/timestamps, e o payload novo vazio é rejeitado. O telefone legado de grupo é derivado somente dos adultos editáveis; restrições/observações continuam sendo dados do grupo.
 
 ## Banco e migrations
 
