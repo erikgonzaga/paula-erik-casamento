@@ -100,7 +100,7 @@ test('Migrations, RLS, RSVP atomicity and edits',async()=>{
   assert.equal((await db.query("select attendance_status from guests where name='Pedro Silva'")).rows[0].attendance_status,'declined');
   const phones=(await db.query('select name,phone from guests where invitation_group_id=$1 order by id',[ids.silva])).rows;
   assert.equal(phones[0].phone,'+55 11 99999-0001');assert.equal(phones[1].phone,'+55 11 99999-0002');assert.equal(phones[2].phone,null);
-  await save(answers.map((guest,index)=>index===0?{...guest,phone:'+55 11 99999-1111'}:guest),'Telefones atualizados');
+  await save(answers.slice(0,2).map((guest,index)=>index===0?{...guest,phone:'+55 11 99999-1111'}:guest),'Telefones atualizados');
   assert.equal((await db.query("select phone from guests where name='João Silva'")).rows[0].phone,'+55 11 99999-1111');
   const other=(await db.query('select id from guests where invitation_group_id=$1',[ids.oliveira])).rows[0].id;
   await assert.rejects(save([{id:other,status:'declined',phone:'+55 11 98888-2222'},...answers.slice(1)]));
@@ -127,4 +127,111 @@ test('Migrations, RLS, RSVP atomicity and edits',async()=>{
   assert.equal((await db.query("select consume_invitation_limit('test',1,60) as value")).rows[0].value,true);
   assert.equal((await db.query("select consume_invitation_limit('test',1,60) as value")).rows[0].value,false);
  }finally{await db.close();}
+});
+
+// Exercise the real migration/RPC and public service together, without remote IO.
+test('public refusal is final, hidden on reads, and remains active/auditable in Admin', async () => {
+ const { typescriptModule } = await import('./typescript-fixture.mjs');
+ const db = await createDatabase({ beforeMigration: '202610120001_rsvp_declined_public_final.sql' });
+ const snapshot = async () => ({ guests: (await db.query('select * from guests order by id')).rows, rsvps: (await db.query('select * from rsvps order by id')).rows });
+ const before = await snapshot();
+ const sql = await readFile(new URL('../supabase/migrations/202610120001_rsvp_declined_public_final.sql', import.meta.url), 'utf8');
+ const databaseModule = `data:text/javascript,export const database=(...args)=>globalThis.__finalRsvpDatabase(...args);`;
+ globalThis.__finalRsvpDatabase = async (path, body) => {
+  if (path === 'rpc/save_invitation_rsvp') return (await db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5) as data', [body.p_group_id, JSON.stringify(body.p_guests), body.p_phone, body.p_dietary, body.p_notes])).rows[0].data;
+  const url = new URL(path, 'https://fixture.invalid');
+  if (url.pathname === '/invitation_groups') return (await db.query('select * from invitation_groups where id=$1', [url.searchParams.get('id').slice(3)])).rows;
+  if (url.pathname === '/event_private_details') return [];
+  const group = url.searchParams.get('invitation_group_id').slice(3);
+  if (url.pathname === '/rsvps') return (await db.query('select * from rsvps where invitation_group_id=$1', [group])).rows;
+  assert.equal(url.searchParams.get('attendance_status'), 'neq.declined');
+  return (await db.query("select id,name,type,phone,attendance_status from guests where invitation_group_id=$1 and active and attendance_status<>'declined' order by id", [group])).rows;
+ };
+ try {
+  await db.exec(sql); assert.deepEqual(await snapshot(), before);
+  await db.exec(sql); assert.deepEqual(await snapshot(), before, 'reexecution does not change data');
+  const replacements = { '@/lib/supabase/server': databaseModule };
+  const { getInvitation } = await import(await typescriptModule('../src/services/invitations.ts', replacements));
+  const { submitRsvp } = await import(await typescriptModule('../src/services/rsvp.ts', replacements));
+  const people = (await getInvitation(ids.silva)).guests;
+  const answers = people.map((p,i) => ({ id:p.id, status:i===0?'declined':'confirmed', phone:p.type==='adult'?'11999990001':null }));
+  const payload = guests => ({ guests, dietary_restrictions:'Restrição preservada', notes:'Observação do grupo' });
+  const first = await submitRsvp(ids.silva, payload(answers));
+  const declinedBefore = (await db.query('select * from guests where id=$1',[people[0].id])).rows[0];
+  assert.equal(declinedBefore.attendance_status,'declined'); assert.equal(declinedBefore.active,true);
+  const following = await getInvitation(ids.silva);
+  assert.equal(following.guests.length,2); assert.ok(!JSON.stringify(following).includes(people[0].name));
+  const remaining = answers.slice(1);
+  const second = await submitRsvp(ids.silva,payload(remaining)); assert.equal(second.updated,true); assert.equal(second.submitted_at,first.submitted_at);
+  assert.deepEqual((await db.query('select * from guests where id=$1',[people[0].id])).rows[0],declinedBefore,'historical phone/status/timestamps are untouched');
+  const rpc = async list => db.query('select save_invitation_rsvp($1,$2::jsonb,$3,$4,$5)',[ids.silva,JSON.stringify(list),null,'','']);
+  for (const invalid of [answers.map(p=>({...p,status:'confirmed'})),[{...answers[0],status:'confirmed'},remaining[0]],[remaining[0],remaining[0]],remaining.slice(0,1)]) {
+   const checkpoint=await snapshot(); await assert.rejects(rpc(invalid)); await assert.rejects(submitRsvp(ids.silva,payload(invalid))); assert.deepEqual(await snapshot(),checkpoint);
+  }
+  const other=(await getInvitation(ids.oliveira)).guests[0];
+  await assert.rejects(rpc([{id:other.id,status:'confirmed',phone:'11999990001'},remaining[1]]));
+  await submitRsvp(ids.silva,payload(remaining.map((p,i)=>({...p,status:i===0?'declined':'confirmed'}))));
+  assert.equal((await getInvitation(ids.silva)).guests.length,1);
+  await submitRsvp(ids.silva,payload([{...remaining[1],status:'declined'}]));
+  const empty=await getInvitation(ids.silva); assert.equal(empty.guests.length,0); assert.equal(empty.name,'Seu convite'); assert.equal(empty.rsvp,null);
+  const final=await snapshot(); await assert.rejects(rpc([])); await assert.rejects(submitRsvp(ids.silva,payload([]))); assert.deepEqual(await snapshot(),final);
+  assert.equal(final.guests.filter(g=>g.invitation_group_id===ids.silva&&g.active&&g.attendance_status==='declined').length,3);
+  const admin='80000000-0000-4000-8000-000000000001';
+  await db.query('insert into auth.users(id) values ($1)',[admin]); await db.query('insert into admin_users(user_id) values ($1)',[admin]);
+  await db.query('update invitation_groups set is_demo=false where id=$1',[ids.silva]);
+  await db.exec('set role service_role');
+  const details=(await db.query('select get_admin_rsvp_details($1) as data',[admin])).rows[0].data;
+  const visible=details.guests.filter(g=>g.group_id===ids.silva); assert.equal(visible.length,3); assert.ok(visible.every(g=>g.attendance_status==='declined'));
+  assert.equal(visible.find(g=>g.id===people[0].id)?.phone,'11999990001');
+  await db.exec('reset role');
+  const config=(await db.query("select prosecdef,proconfig from pg_proc where oid='public.save_invitation_rsvp(uuid,jsonb,text,text,text)'::regprocedure")).rows[0];
+  assert.equal(config.prosecdef,false); assert.ok(config.proconfig.includes('search_path=""'));
+  for(const role of ['anon','authenticated']) { await db.exec('set role '+role); await assert.rejects(rpc([])); await db.exec('reset role'); }
+ } finally { delete globalThis.__finalRsvpDatabase; await db.close(); }
+});
+
+test('public portal removes declined names after save and shows a neutral empty invitation', async () => {
+ const { JSDOM } = await import('jsdom');
+ const { typescriptModule } = await import('./typescript-fixture.mjs');
+ const { createRequire } = await import('node:module');
+ const { pathToFileURL } = await import('node:url');
+ const require=createRequire(import.meta.url);
+ const React=await import('react'); const { act }=React; const { createRoot }=await import('react-dom/client');
+ const dom=new JSDOM('<div id="root"></div>',{url:'https://fixture.invalid'});
+ const keys=['window','document','HTMLElement','HTMLInputElement','navigator','IS_REACT_ACT_ENVIRONMENT'];
+ const old=Object.fromEntries(keys.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
+ const originalFetch=globalThis.fetch;
+ for(const k of keys.slice(0,-1))Object.defineProperty(globalThis,k,{configurable:true,value:dom.window[k]});
+ globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+ const url=source=>`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+ const link=url(`import React from '${pathToFileURL(require.resolve('react')).href}';export default function Link({children,...props}){return React.createElement('a',props,children);}`);
+ const replacements={'next/link':link,'next/navigation':url('export const useRouter=()=>({push(){}});'),
+  './wedding-logo':url('export const WeddingLogo=()=>null;'),'./icons':url('export const ArrowUpRightIcon=()=>null;')};
+ const {InvitationPortal}=await import(await typescriptModule('../src/components/invitation-portal.tsx',replacements));
+ const guest={id:'91000000-0000-4000-8000-000000000001',name:'Fixture recusada',type:'adult',phone:'11999990001',attendance_status:'confirmed'};
+ let invitation={id:ids.silva,name:'Seu convite',guests:[guest],active:true,is_demo:false,rsvp:null,event:null};
+ const posts=[]; let root;
+ try {
+  globalThis.fetch=async(_path,init)=>{
+   if(init.method==='POST'){posts.push(JSON.parse(init.body));return Response.json({updated:false,submitted_at:'2026-10-12T00:00:00Z',updated_at:'2026-10-12T00:00:00Z'});}
+   return Response.json(invitation);
+  };
+  const container=dom.window.document.getElementById('root');root=createRoot(container);
+  await act(async()=>{root.render(React.createElement(InvitationPortal));});
+  assert.ok(container.textContent.includes(guest.name));
+  await act(async()=>{container.querySelector('input[value="declined"]').click();});
+  await act(async()=>{container.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));});
+  assert.equal(posts.length,1);assert.equal(posts[0].guests[0].status,'declined');
+  assert.ok(!container.innerHTML.includes(guest.name));assert.equal(container.querySelector('form'),null);
+  assert.ok(container.textContent.includes('As respostas deste convite já foram registradas.'));
+  await act(async()=>root.unmount());root=null;
+  invitation={...invitation,guests:[]};root=createRoot(container);
+  await act(async()=>root.render(React.createElement(InvitationPortal)));
+  assert.equal(container.querySelector('form'),null);assert.equal(posts.length,1);
+  assert.ok(container.textContent.includes('As respostas deste convite já foram registradas.'));
+ } finally {
+  if(root)await act(async()=>root.unmount());globalThis.fetch=originalFetch;
+  for(const [k,descriptor]of Object.entries(old)){if(descriptor)Object.defineProperty(globalThis,k,descriptor);else delete globalThis[k];}
+  dom.window.close();
+ }
 });
