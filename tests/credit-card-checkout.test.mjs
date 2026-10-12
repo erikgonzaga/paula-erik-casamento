@@ -107,7 +107,11 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
   for (const method of ['log', 'warn', 'error', 'info']) { previousConsole[method] = console[method]; console[method] = (...args) => logs.push(args); }
   let storageCalls = 0;
   const originalSet = dom.window.Storage.prototype.setItem;
-  dom.window.Storage.prototype.setItem = function () { storageCalls++; throw new Error('storage prohibited'); };
+  dom.window.Storage.prototype.setItem = function (...args) { storageCalls++; return originalSet.apply(this, args); };
+  const locks = new Map();
+  Object.defineProperty(dom.window.navigator, 'locks', { value: { request(name, callback) {
+    const next = (locks.get(name) ?? Promise.resolve()).then(callback); locks.set(name, next.catch(() => {})); return next;
+  } } });
   const timers = new Map(); let timerId = 0;
   dom.window.setInterval = callback => { const id = ++timerId; timers.set(id, callback); return id; };
   dom.window.clearInterval = id => timers.delete(id);
@@ -142,7 +146,7 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
     });
   }
   async function mount(currentGift = gift(), enabled = true) {
-    calls = []; currentResponse = paymentResult(); statusResponse = paymentResult(); blockedPost = null;
+    calls = []; currentResponse = paymentResult(); statusResponse = checkout.recalledCardOperation(currentGift.id)?.result ?? paymentResult(); blockedPost = null;
     globalThis.fetch = async (url, init) => {
       assert.ok(['/api/gift-contributions', '/api/gift-contributions/status'].includes(url));
       calls.push({ url, body: JSON.parse(init.body) });
@@ -201,13 +205,16 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
         await instances.at(-1).settings.callbacks.onSubmit(data, { paymentTypeId: 'credit_card' });
       });
       assert.equal(calls.filter(call => call.url === '/api/gift-contributions').length, 1);
-      assert.equal(calls[0].body.installments, 12);
+      assert.equal(calls.find(call => call.url === '/api/gift-contributions').body.installments, 12);
       for (const field of ['card_number', 'cvv', 'expiration_date', 'issuer_id']) assert.ok(!Object.hasOwn(calls[0].body, field));
       for (const value of ['MOCK_TEMP_TOKEN', 'MOCK_PAN', 'MOCK_CVV', 'MOCK_EXPIRY', '12345678909', 'MOCK_DEVICE']) {
         assert.ok(!container.outerHTML.includes(value)); assert.ok(!JSON.stringify(logs).includes(value));
         assert.ok(!JSON.stringify(checkout.recalledCardOperation(currentGift.id)).includes(value));
       }
-      assert.equal(storageCalls, 0);
+      assert.ok(storageCalls > 0);
+      const stored = JSON.stringify(dom.window.localStorage);
+      for (const value of ['MOCK_TEMP_TOKEN', 'MOCK_PAN', 'MOCK_CVV', 'MOCK_EXPIRY', '12345678909', 'MOCK_DEVICE', 'fixture@example.invalid', 'MOCK_CHALLENGE']) assert.ok(!stored.includes(value));
+      assert.equal(dom.window.sessionStorage.length, 0);
       assert.ok(container.textContent.includes('Pagamento pendente')); await unmount();
     });
     await t.test('13 is rejected before fetch; declined requires explicit new operation and fresh Brick token', async () => {
@@ -225,7 +232,7 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
       const currentGift = await mount(); await card(); currentResponse = new Error('MOCK_NETWORK'); await token();
       const key = calls[0].body.idempotency_key;
       assert.ok(container.textContent.includes('comunicação')); await unmount();
-      await mount(currentGift); assert.ok(container.textContent.includes('verificando')); assert.equal(calls.length, 0);
+      await mount(currentGift); assert.ok(container.textContent.includes('verificando')); assert.equal(calls.filter(call => call.url === '/api/gift-contributions').length, 0);
       statusResponse = Response.json({ message: 'not found' }, { status: 404 }); await click('CONSULTAR PAGAMENTO');
       await click('TENTAR ENVIO COM A MESMA CHAVE'); await token(1, 'MOCK_RETRY_TOKEN');
       assert.equal(calls.filter(call => call.url === '/api/gift-contributions')[0].body.idempotency_key, key); await unmount();
@@ -243,11 +250,74 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
       checkout.rememberCardOperation(currentGift.id, calls[0].body.idempotency_key, paymentResult('failed', 'failed'));
       await unmount(); await mount(currentGift);
       await click('INICIAR NOVA TENTATIVA'); await card(); await token(1, 'MOCK_NEW_TOKEN');
-      const newKey = calls[0].body.idempotency_key;
+      const newKey = calls.find(call => call.url === '/api/gift-contributions').body.idempotency_key;
       oldResult = paymentResult('confirmed', 'confirmed');
       await act(async () => { release(); await status; await new Promise(resolve => setImmediate(resolve)); });
       assert.equal(checkout.recalledCardOperation(currentGift.id)?.key, newKey);
       assert.ok(container.textContent.includes('Pagamento pendente')); await unmount();
+    });
+    await t.test('reload discards UI memory, recovers the durable key, and never auto-posts', async () => {
+      for (const [status, detail] of [['confirmed', 'confirmed'], ['pending', 'investigating'], ['pending', 'action_required'], ['failed', 'failed'], ['cancelled', 'cancelled'], ['expired', 'expired']]) {
+        const currentGift = await mount(); await card(); currentResponse = new Error('LOST_RESPONSE'); await token();
+        const key = calls.find(call => call.url === '/api/gift-contributions').body.idempotency_key;
+        await unmount(); checkout.forgetCardOperation(currentGift.id);
+        await mount(currentGift);
+        assert.equal(calls[0].url, '/api/gift-contributions/status');
+        assert.equal(calls[0].body.idempotency_key, key);
+        assert.equal(calls.filter(call => call.url === '/api/gift-contributions').length, 0);
+        statusResponse = paymentResult(status, detail); await click('CONSULTAR PAGAMENTO');
+        if (status === 'confirmed') assert.ok(container.textContent.includes('aprovado e confirmado'));
+        else if (status !== 'pending') assert.ok(button('INICIAR NOVA TENTATIVA'));
+        else assert.ok(button('CONSULTAR PAGAMENTO'));
+        assert.ok(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id).includes(key));
+        await unmount();
+      }
+    });
+    await t.test('reload plus 404 retokenizes with the same key and re-entered details', async () => {
+      const currentGift = await mount(); await card(); currentResponse = new Error('LOST_RESPONSE'); await token();
+      const key = calls.find(call => call.url === '/api/gift-contributions').body.idempotency_key;
+      await unmount(); checkout.forgetCardOperation(currentGift.id);
+      await mount(currentGift);
+      statusResponse = Response.json({}, { status: 404 }); await click('CONSULTAR PAGAMENTO');
+      await click('TENTAR ENVIO COM A MESMA CHAVE'); await details(); await click('CONTINUAR'); await token();
+      assert.equal(calls.find(call => call.url === '/api/gift-contributions').body.idempotency_key, key);
+      await unmount();
+    });
+    await t.test('storage notification switches an already open tab to tracking without POST', async () => {
+      const currentGift = await mount();
+      const key = randomUUID();
+      dom.window.localStorage.setItem('pe:card-operation:v1:' + currentGift.id, JSON.stringify({ version: 1, gift_id: currentGift.id, key, created_at: new Date().toISOString() }));
+      await act(async () => { dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'pe:card-operation:v1:' + currentGift.id })); });
+      assert.equal(calls[0].body.idempotency_key, key);
+      assert.equal(calls.filter(call => call.url === '/api/gift-contributions').length, 0);
+      assert.ok(button('CONSULTAR PAGAMENTO')); await unmount();
+    });
+    await t.test('a tab submitting after another tab persisted must follow, even without a storage event', async () => {
+      const currentGift = await mount(); await card(); const key = randomUUID();
+      dom.window.localStorage.setItem('pe:card-operation:v1:' + currentGift.id, JSON.stringify({ version: 1, gift_id: currentGift.id, key, created_at: new Date().toISOString() }));
+      await token();
+      assert.equal(calls.filter(call => call.url === '/api/gift-contributions').length, 0);
+      assert.equal(calls[0].body.idempotency_key, key); await unmount();
+    });
+    await t.test('blocked durable storage prevents card POST but keeps Pix available', async () => {
+      await mount(); await card();
+      const set = dom.window.Storage.prototype.setItem;
+      dom.window.Storage.prototype.setItem = () => { throw new Error('quota'); };
+      try {
+        await token();
+        assert.equal(calls.length, 0);
+        assert.equal(button('VOLTAR AO PIX').disabled, false);
+        await click('VOLTAR AO PIX'); assert.ok(button('CONTINUAR'));
+      } finally { dom.window.Storage.prototype.setItem = set; await unmount(); }
+    });
+    await t.test('old pending references remain; only backend terminal evidence allows age cleanup', async () => {
+      const currentGift = gift(), key = randomUUID();
+      dom.window.localStorage.setItem('pe:card-operation:v1:' + currentGift.id, JSON.stringify({ version: 1, gift_id: currentGift.id, key, created_at: '2020-01-01T00:00:00.000Z' }));
+      await mount(currentGift);
+      assert.ok(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id));
+      statusResponse = paymentResult('expired', 'expired'); await click('CONSULTAR PAGAMENTO');
+      assert.equal(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id), null);
+      await unmount();
     });
     await t.test('3DS pins origin + iframe source, prevents top navigation and confirms only via status', async () => {
       await mount(); await card(); currentResponse = paymentResult('pending', 'action_required', 'https://issuer.example/challenge?temporary=MOCK_CHALLENGE'); await token();
@@ -299,5 +369,52 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
     for (const [key, descriptor] of Object.entries(old)) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
     for (const [method, callback] of Object.entries(previousConsole)) console[method] = callback;
     dom.window.Storage.prototype.setItem = originalSet; delete globalThis.__cardUI; dom.window.close();
+  }
+});
+
+
+test('durable reference arbitration serializes tabs and fails closed without locks or storage', async () => {
+  const store = await import(await typescriptModule('../src/lib/payments/card-operation-storage.ts'));
+  const dom = new JSDOM('', { url: 'https://fixture.invalid' });
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const oldNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const queues = new Map();
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: dom.window });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: { request(name, fn) {
+    const next = (queues.get(name) ?? Promise.resolve()).then(fn); queues.set(name, next.catch(() => {})); return next;
+  } } } });
+  try {
+    const gift = randomUUID(), seen = [];
+    await Promise.all([1, 2].map(() => store.withCardOperation(gift, async (reference, created) => {
+      seen.push({ reference, created }); await new Promise(resolve => setImmediate(resolve));
+    })));
+    assert.equal(seen.filter(x => x.created).length, 1);
+    assert.equal(seen[0].reference.key, seen[1].reference.key);
+    const afterReload = await import((await typescriptModule('../src/lib/payments/card-operation-storage.ts')) + '#fresh');
+    assert.deepEqual(afterReload.readCardReference(gift), seen[0].reference);
+    assert.deepEqual(Object.keys(seen[0].reference).sort(), ['created_at', 'gift_id', 'key', 'version']);
+    await store.clearTerminalCardReference(gift, randomUUID());
+    assert.ok(store.readCardReference(gift), 'A stale tab cannot clear another key');
+    await store.clearTerminalCardReference(gift, seen[0].reference.key); assert.equal(store.readCardReference(gift), null);
+    const originalSet = dom.window.Storage.prototype.setItem;
+    dom.window.Storage.prototype.setItem = () => { throw new Error('quota'); };
+    let called = false;
+    await assert.rejects(store.withCardOperation(gift, async () => { called = true; }));
+    assert.equal(called, false, 'No POST before durable persistence');
+    dom.window.Storage.prototype.setItem = originalSet;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+    let sent = false;
+    await assert.rejects(store.withCardOperation(gift, async () => { sent = true; })); assert.equal(sent, false);
+    dom.window.localStorage.setItem(store.cardReferencePrefix + gift, '{broken');
+    assert.throws(() => store.readCardReference(gift));
+    const original = dom.window.Storage.prototype.getItem;
+    dom.window.Storage.prototype.getItem = () => { throw new Error('blocked'); };
+    assert.throws(() => store.readCardReference(gift));
+    dom.window.Storage.prototype.getItem = original;
+  } finally {
+    for (const [key, descriptor] of [['window', oldWindow], ['navigator', oldNavigator]]) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+    dom.window.close();
   }
 });

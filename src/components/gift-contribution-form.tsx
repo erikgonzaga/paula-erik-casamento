@@ -9,6 +9,7 @@ import type { CreditCardInput } from '@/lib/payments/contracts';
 import { cardCheckoutAmount, parseCardCheckoutResult, recalledCardOperation, rememberCardOperation, forgetCardOperation,
   type CheckoutResult, type CardContributionDetails } from '@/lib/payments/card-checkout';
 import { CardPaymentBrick } from './card-payment-brick';
+import { readCardReference, withCardOperation, clearTerminalCardReference, cardReferencePrefix, cardReferenceRetentionMs } from '@/lib/payments/card-operation-storage';
 import { CardPaymentChallenge } from './card-payment-challenge';
 import styles from './gift-contribution-form.module.css';
 
@@ -34,6 +35,7 @@ type PaymentResult = CheckoutResult;
 export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift: Gift; cardCheckoutEnabled?: boolean }) {
   const router = useRouter();
   const previous = cardCheckoutEnabled ? recalledCardOperation(gift.id) : undefined;
+  const [recovering, setRecovering] = useState(cardCheckoutEnabled);
   const [method, setMethod] = useState<'pix' | 'credit_card'>(previous ? 'credit_card' : 'pix');
   const [cardAmount, setCardAmount] = useState<number | null>(null);
   const [retryAllowed, setRetryAllowed] = useState(false);
@@ -56,6 +58,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
   const mounted = useRef(true);
   const statusInFlight = useRef(false);
   const cardSubmissionStarted = useRef(Boolean(previous));
+  const explicitSameKeyRetry = useRef(false);
   const isInsane = gift.gift_type === 'insanos';
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -70,17 +73,53 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
       const raw: unknown = await response.json();
       if (!response.ok) {
         if (mounted.current && idempotencyKey.current === key) {
-          setRetryAllowed(response.status === 404 && !!cardDetails.current);
+          setRetryAllowed(response.status === 404);
           setError(response.status === 404 ? 'Esta operação ainda não foi localizada. Um novo envio usará a mesma tentativa.' : 'Não foi possível consultar o pagamento. Tente consultar novamente.');
         }
         return;
       }
       const result = parseCardCheckoutResult(raw);
       if (recalledCardOperation(gift.id)?.key === key) rememberCardOperation(gift.id, key, result);
+      try {
+        const reference = readCardReference(gift.id);
+        if (result.payment_status !== 'pending' && reference?.key === key &&
+            Date.now() - Date.parse(reference.created_at) > cardReferenceRetentionMs) {
+          await clearTerminalCardReference(gift.id, key);
+        }
+      } catch {
+        // A storage failure must not hide an authoritative backend result.
+        // Keep the reference; a new operation still requires safe cleanup.
+      }
       if (mounted.current && idempotencyKey.current === key) { setPayment(result); setError(''); setRetryAllowed(false); }
     } catch { if (mounted.current && idempotencyKey.current === key) setError('Não foi possível consultar o pagamento. Tente consultar novamente.'); }
     finally { statusInFlight.current = false; }
   }, [gift.id]);
+
+  useEffect(() => {
+    if (!cardCheckoutEnabled) return;
+    const restore = () => {
+      try {
+        const reference = readCardReference(gift.id);
+        if (!reference) return;
+        if (idempotencyKey.current !== reference.key) cardDetails.current = null;
+        idempotencyKey.current = reference.key;
+        cardSubmissionStarted.current = true;
+        setMethod('credit_card'); setMethodLocked(true); setCardAmount(null);
+        const result: CheckoutResult = { payment_status: 'pending', payment: {
+          status: 'investigating', qr_code: null, qr_code_base64: null, ticket_url: null, expires_at: '' } };
+        rememberCardOperation(gift.id, reference.key, result, true);
+        setPayment(result);
+        void checkCardStatus();
+      } catch { setError('Não foi possível recuperar a operação de cartão. Verifique o armazenamento do navegador antes de continuar.'); }
+      finally { setRecovering(false); }
+    };
+    restore();
+    const changed = (event: StorageEvent) => {
+      if (event.key === cardReferencePrefix + gift.id || event.key === null) restore();
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [cardCheckoutEnabled, gift.id, checkCardStatus]);
 
   useEffect(() => {
     if (payment?.payment_status !== 'confirmed' || refreshedAfterConfirmation.current) return;
@@ -121,29 +160,41 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
     cardSubmissionStarted.current = true;
     inFlight.current = true;
     setSubmitting(true); setMethodLocked(true); setError('');
-    idempotencyKey.current ??= crypto.randomUUID();
-    const key = idempotencyKey.current;
     const details = cardDetails.current!;
     const investigating: CheckoutResult = { payment_status: 'pending', payment: {
       status: 'investigating', qr_code: null, qr_code_base64: null, ticket_url: null, expires_at: '' } };
-    // Save no card data. A close/reopen after sending resumes status, never POST.
-    rememberCardOperation(gift.id, key, investigating, true, details);
+    let persisted = false;
     try {
-      const response = await fetch('/api/gift-contributions', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...details, idempotency_key: key, payment_method: 'credit_card',
-          card_token: card.card_token, payment_method_id: card.payment_method_id, installments: card.installments,
-          ...(card.payer ? { payer: card.payer } : {}), ...(card.device_id ? { device_id: card.device_id } : {}) }),
+      await withCardOperation(gift.id, async (reference, created) => {
+        const sameKeyRetry = explicitSameKeyRetry.current && idempotencyKey.current === reference.key;
+        explicitSameKeyRetry.current = false;
+        idempotencyKey.current = reference.key;
+        const key = reference.key;
+        persisted = true;
+        rememberCardOperation(gift.id, key, investigating, true, details);
+        if (!created && !sameKeyRetry) {
+          if (mounted.current) setPayment(investigating);
+          await checkCardStatus();
+          return;
+        }
+        const response = await fetch('/api/gift-contributions', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...details, idempotency_key: key, payment_method: 'credit_card',
+            card_token: card.card_token, payment_method_id: card.payment_method_id, installments: card.installments,
+            ...(card.payer ? { payer: card.payer } : {}), ...(card.device_id ? { device_id: card.device_id } : {}) }),
       });
       const raw: unknown = await response.json();
       if (!response.ok) throw new Error('card_submission_unavailable');
       const result = parseCardCheckoutResult(raw);
       if (recalledCardOperation(gift.id)?.key === key) rememberCardOperation(gift.id, key, result, false, details);
       if (mounted.current) setPayment(result);
+      });
     } catch {
       if (mounted.current) {
-        setPayment(investigating);
-        setError('A comunicação foi interrompida. Vamos verificar esta tentativa antes de qualquer novo envio.');
+        if (persisted) setPayment(investigating);
+        else { cardSubmissionStarted.current = false; setMethodLocked(false); }
+        setError(persisted ? 'A comunicação foi interrompida. Vamos verificar esta tentativa antes de qualquer novo envio.'
+          : 'Não foi possível proteger esta operação entre abas. Use um navegador com Web Locks e armazenamento local disponível.');
       }
     } finally {
       inFlight.current = false;
@@ -203,10 +254,23 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
     }
   }
 
+  async function startNewCardOperation() {
+    try {
+      if (idempotencyKey.current) await clearTerminalCardReference(gift.id, idempotencyKey.current);
+      cardSubmissionStarted.current = false; explicitSameKeyRetry.current = false;
+      refreshedAfterConfirmation.current = false;
+      forgetCardOperation(gift.id); idempotencyKey.current = null; cardDetails.current = null;
+      setPayment(null); setCardAmount(null); setError(''); setRetryAllowed(false); setMethodLocked(false);
+    } catch { setError('Não foi possível liberar a referência anterior com segurança.'); }
+  }
+
+  if (recovering) return <p className={styles.waiting} role="status">Verificando operação anterior…</p>;
+
   if (payment) {
     if (payment.payment_status === 'confirmed') {
       return <div className={styles.success} role="status">
         <strong>{method === 'credit_card' ? 'Pagamento aprovado e confirmado.' : 'Pagamento confirmado.'}</strong><br />Muito obrigado por fazer parte desta caminhada.
+        {method === 'credit_card' && <button type="button" className={styles.copy} onClick={() => void startNewCardOperation()}>INICIAR NOVA CONTRIBUIÇÃO</button>}
       </div>;
     }
     if (method === 'credit_card') {
@@ -228,15 +292,13 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
         {error && <p className={styles.error} role="alert">{error}</p>}
         {!terminal && <button className={styles.copy} type="button" onClick={() => void checkCardStatus()}>CONSULTAR PAGAMENTO</button>}
         {retryAllowed && <button className={styles.copy} type="button" onClick={() => {
+          explicitSameKeyRetry.current = true;
           cardSubmissionStarted.current = false;
           setPayment(null); setError(''); setRetryAllowed(false);
-          setCardAmount(cardCheckoutAmount(gift.funding_mode === 'fixed' ? gift.target_amount : cardDetails.current?.amount));
+          if (cardDetails.current) setCardAmount(cardCheckoutAmount(gift.funding_mode === 'fixed' ? gift.target_amount : cardDetails.current.amount));
+          else setCardAmount(null);
         }}>TENTAR ENVIO COM A MESMA CHAVE</button>}
-        {terminal && <button className={styles.copy} type="button" onClick={() => {
-          cardSubmissionStarted.current = false;
-          forgetCardOperation(gift.id); idempotencyKey.current = null; cardDetails.current = null;
-          setPayment(null); setCardAmount(null); setError(''); setRetryAllowed(false); setMethodLocked(false);
-        }}>INICIAR NOVA TENTATIVA</button>}
+        {terminal && <button className={styles.copy} type="button" onClick={() => void startNewCardOperation()}>INICIAR NOVA TENTATIVA</button>}
       </section>;
     }
     if (payment.payment_status !== 'pending') {

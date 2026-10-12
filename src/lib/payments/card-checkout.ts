@@ -69,7 +69,7 @@ export function parseCardCheckoutResult(value: unknown): CheckoutResult {
   } };
 }
 
-// Memory only; survives modal closure so an uncertain send is not repeated.
+// In-memory UI cache only; durable opaque references live in card-operation-storage.
 // No token/document/device ID/challenge URL belongs in this registry.
 export type CardContributionDetails = {
   gift_id: string; amount?: string; contributor_name: string; contributor_phone: string;
