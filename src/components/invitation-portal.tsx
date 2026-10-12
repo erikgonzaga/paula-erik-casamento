@@ -46,13 +46,14 @@ export function InvitationPortal({slug}:{slug?:string}){
     void opening.then(apply).catch(error=>{if(slug||!(error instanceof PortalError && error.status===401))setMessage(error instanceof Error?error.message:'Tente novamente em alguns instantes.');}).finally(()=>setBusy(false));
   },[slug,apply]);
   async function save(event:React.FormEvent<HTMLFormElement>){
-    event.preventDefault();if(!invitation)return;
+    event.preventDefault();if(!invitation || busy || !invitation.guests.length)return;
     setBusy(true);setMessage('');setSuccess('');
     try{
       const result=await request<{updated:boolean;submitted_at:string;updated_at:string}>('/api/rsvp',{
         guests:invitation.guests.map(g=>({id:g.id,status:answers[g.id],phone:g.type==='adult'?(phones[g.id]?.trim()||null):null})),dietary_restrictions:dietary,notes,
       });
-      apply({...invitation,guests:invitation.guests.map(g=>({...g,attendance_status:answers[g.id] as 'confirmed'|'declined',phone:g.type==='adult'?(phones[g.id]?.trim()||null):null})),rsvp:{dietary_restrictions:dietary,notes,submitted_at:result.submitted_at,updated_at:result.updated_at}});
+      const remaining=invitation.guests.filter(g=>answers[g.id]!=='declined');
+      apply({...invitation,name:remaining.length?invitation.name:'Seu convite',guests:remaining.map(g=>({...g,attendance_status:answers[g.id] as 'confirmed'|'declined',phone:g.type==='adult'?(phones[g.id]?.trim()||null):null})),rsvp:remaining.length?{dietary_restrictions:dietary,notes,submitted_at:result.submitted_at,updated_at:result.updated_at}:null});
       setSuccess(result.updated?'Sua resposta foi atualizada. Obrigado por nos avisar!':'Sua resposta foi salva com carinho. Obrigado!');
     }catch(error){setMessage(error instanceof Error?error.message:'Não foi possível salvar. Tente novamente.');}finally{setBusy(false);}
   }
@@ -77,8 +78,8 @@ export function InvitationPortal({slug}:{slug?:string}){
     </form>}
     {invitation&&<>
       {invitation.is_demo&&<p className="invitation-message">Convite DEMO — somente para testes.</p>}
-      {invitation.rsvp&&<p className="invitation-help">Você já respondeu este convite. Caso seus planos tenham mudado, você pode atualizar sua confirmação.</p>}
-      <form className="invitation-card" onSubmit={save}>
+      {invitation.guests.length>0&&invitation.rsvp&&<p className="invitation-help">Você já respondeu este convite. Caso seus planos tenham mudado, você pode atualizar sua confirmação.</p>}
+      {invitation.guests.length===0?<p className="invitation-message" role="status">As respostas deste convite já foram registradas.</p>:<form className="invitation-card" onSubmit={save}>
         <fieldset disabled={busy} className="invitation-fields"><legend className="sr-only">Presença dos convidados</legend>
           {invitation.guests.map(g=><fieldset className="guest-response" key={g.id}>
             <legend>{g.name}{g.type==='child'&&<span className="guest-type">Criança</span>}</legend>
@@ -90,7 +91,7 @@ export function InvitationPortal({slug}:{slug?:string}){
           <label className="field-label" htmlFor="notes">Observações <span>(opcional)</span></label><textarea id="notes" value={notes} onChange={e=>setNotes(e.target.value)} rows={3} maxLength={2000} />
           <button className="button primary invitation-submit" type="submit" disabled={!invitation.guests.length}>{busy?'Salvando…':invitation.rsvp?'Atualizar resposta':'Confirmar presença'} <ArrowUpRightIcon /></button>
         </fieldset>
-      </form>
+      </form>}
       <section className="private-event"><p className="eyebrow">NOSSO ENCONTRO</p>
         {invitation.event?<><h2>{invitation.event.venue}</h2><p className="private-address">{invitation.event.address}</p><p>21 de novembro de 2026</p><p>Recepção: {invitation.event.reception_time}</p><p>Troca de alianças: {invitation.event.ceremony_time}</p><p>{invitation.event.parking}</p><p>{invitation.event.valet}</p></>:<p>O endereço completo e as orientações de chegada serão disponibilizados aqui em breve.</p>}
       </section>

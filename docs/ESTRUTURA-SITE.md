@@ -130,12 +130,13 @@ O catálogo definitivo aprovado está em `supabase/catalogs/20260917_gifts_defin
 
 ### RSVP
 
-- Todos os integrantes ativos do grupo devem ser enviados uma única vez.
+- Todos os integrantes ativos que ainda não estão `declined` devem ser enviados uma única vez. Recusados anteriores são excluídos da leitura pública e rejeitados pela RPC, sem apagar seus dados.
 - Presença é `confirmed` ou `declined` por pessoa.
 - Adultos exigem telefone/WhatsApp individual; crianças ficam com telefone nulo.
 - Validação aceita caracteres comuns de telefone, exige 8–15 dígitos e limita a string a 32 caracteres.
 - Restrições alimentares e observações permanecem no registro de grupo.
-- Reabrir o convite recupera presença, telefones e textos para edição.
+- Reabrir o convite recupera presença, telefones e textos para edição dos integrantes ainda editáveis. Quando todos recusam, o código continua válido, sem formulário nem nomes, com a mensagem “As respostas deste convite já foram registradas.” O Admin mantém todos os ativos.
+- Migration local `202610120001_rsvp_declined_public_final.sql`: substitui somente a RPC de gravação, preservando assinatura, permissões e atomicidade. Aplicação remota ainda pendente.
 
 ## Banco e migrations
 
