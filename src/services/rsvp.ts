@@ -5,7 +5,7 @@ import { InvitationError, validateSubmission } from '@/lib/invitations/validatio
 export async function submitRsvp(groupId: string, value: unknown) {
   const submission = validateSubmission(value);
   const invitation = await getInvitation(groupId);
-  if (submission.guests.length !== invitation.guests.length || submission.guests.some(g=>!invitation.guests.some(i=>i.id===g.id))) {
+  if (submission.guests.some(g=>!invitation.guests.some(i=>i.id===g.id))) {
     throw new InvitationError(400,'As pessoas deste convite mudaram. Reabra o convite antes de responder.');
   }
   if (submission.guests.some(guest=>{
