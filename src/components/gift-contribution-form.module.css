@@ -14,4 +14,13 @@
 /* Neutral inherited site typography; SDK class rules remain authoritative. */
 .cardBrick>[data-mp-brick-host]{font-family:Arial,sans-serif;font-size:16px;font-weight:400;line-height:normal;letter-spacing:normal;white-space:normal;word-break:normal;overflow-wrap:normal;color:initial;text-align:start}
 
+/* Temporary diagnostic outside the SDK host; never targets provider fields. */
+.installmentDiagnostic{margin-top:18px;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--cream);color:var(--ink);font:400 .75rem/1.5 Arial,sans-serif;letter-spacing:normal;text-align:left}
+.installmentDiagnostic summary{cursor:pointer;font-weight:600}
+.installmentDiagnostic p{margin:8px 0;color:var(--ink);font:inherit}
+.installmentDiagnosticResults{max-height:340px;overflow-y:auto}
+.installmentDiagnosticOffer{padding:10px 0;border-top:1px solid var(--line)}
+.installmentDiagnosticOffer dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px;margin:8px 0 0}
+.installmentDiagnosticOffer dt,.installmentDiagnosticOffer dd{min-width:0;margin:0;overflow-wrap:anywhere}
+
 .cardBrick>[data-mp-brick-host]{font-family:Arial,sans-serif;font-size:16px;font-weight:400;line-height:normal;letter-spacing:normal;white-space:normal;word-break:normal;overflow-wrap:normal;color:initial;text-align:start}

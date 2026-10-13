@@ -31,6 +31,9 @@ export function createCardBrickManager(loadBuilder: () => Promise<BrickBuilder>)
           onReady: () => { if (active) settings.callbacks.onReady(); },
           onError: () => { if (active) settings.callbacks.onError(); },
           onSubmit: (data, additional) => active ? settings.callbacks.onSubmit(data, additional) : Promise.reject(new Error('card_brick_closed')),
+          ...(settings.callbacks.onBinChange ? { onBinChange: (bin: unknown) => {
+            if (active) settings.callbacks.onBinChange?.(bin);
+          } } : {}),
         };
         creationStarted = true;
         controller = await builder.create('cardPayment', id, { ...settings, callbacks });
