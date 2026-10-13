@@ -43,7 +43,7 @@ Implementada e aprovada como base visual. Inclui:
 
 ### Fase 2 — convite fechado e RSVP
 
-Implementada no código com Supabase, migrations, sessão assinada, RLS, rate limiting e testes. O fluxo aceita código ou slug, carrega somente integrantes previamente cadastrados e permite editar respostas já salvas.
+Implementada no código com Supabase, migrations, sessão assinada, RLS, rate limiting e testes. O fluxo aceita código ou slug, carrega somente integrantes previamente cadastrados e permite editar respostas já salvas de integrantes que ainda não recusaram. Uma recusa (`declined`) é definitiva pelo fluxo público: a pessoa permanece ativa no banco e visível no Admin, mas deixa de aparecer no convite.
 
 A conversa registra testes do fluxo real em produção, inclusive uma correção para códigos digitados em minúsculas. Isso indica que houve publicação e conexão remota depois da documentação antiga. Em um novo computador, confirme o estado atual da Vercel e das migrations no Supabase antes de operar dados reais. Não presuma que o conteúdo de `FASE-2.md` na raiz ainda descreve o ambiente remoto.
 

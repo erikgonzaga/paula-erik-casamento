@@ -46,6 +46,7 @@ export async function fixtureServer(db,port=54329){
     const params=[];const where=[];
     for(const [key,value] of url.searchParams){
      if(['select','limit','order'].includes(key))continue;
+     if(key==='attendance_status' && value==='neq.declined' && table==='guests'){where.push("attendance_status<>'declined'");continue;}
      if(!['id','code','slug','invitation_group_id','active'].includes(key)||!value.startsWith('eq.'))throw Error('invalid filter');
      params.push(value.slice(3));where.push(key+'=$'+params.length);
     }
