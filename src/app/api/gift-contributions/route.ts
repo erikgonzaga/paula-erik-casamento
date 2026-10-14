@@ -27,7 +27,10 @@ export async function POST(request: Request) {
     }
     return json(await createGiftPayment(body), 201);
   } catch (error) {
-    if (error instanceof GiftContributionError || error instanceof InvitationError) {
+    if (error instanceof GiftContributionError) {
+      return json({ code: error.code, message: error.message }, error.status);
+    }
+    if (error instanceof InvitationError) {
       return json({ message: error.message }, error.status);
     }
     return json({ message: 'Não foi possível registrar a contribuição agora. Tente novamente em alguns instantes.' }, 503);

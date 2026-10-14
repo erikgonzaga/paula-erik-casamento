@@ -79,12 +79,39 @@ test('card checkout policy is fail-closed: test + explicit flag + public key; pr
       process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = 'MOCK_PUBLIC_KEY';
       const response = await route.POST(new Request('https://fixture.invalid/api/gift-contributions', { method: 'POST', body: JSON.stringify({ payment_method: 'credit_card' }) }));
       assert.equal(response.status, expected);
+      if (expected === 409) assert.deepEqual(await response.json(), {
+        code: 'credit_card_unavailable', message: 'Pagamento por cartão ainda não está disponível.' });
     }
     assert.equal(created, 1);
   } finally {
     delete globalThis.__cardRouteFixture;
     for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
+});
+
+test('contribution API exposes only structured application errors; unexpected errors stay generic', async () => {
+  const domainUrl = await typescriptModule('../src/lib/gifts/contribution.ts');
+  const { GiftContributionError } = await import(domainUrl);
+  const service = moduleUrl('export const createGiftPayment = async () => { throw globalThis.__rejectionFixture; };');
+  const http = moduleUrl('export const assertSameOrigin = () => {}; export const limit = async () => {}; export const readBody = r => r.json();');
+  const route = await import(await typescriptModule('../src/app/api/gift-contributions/route.ts', {
+    '@/lib/gifts/contribution': domainUrl, '@/services/gift-payments': service, '@/lib/invitations/http': http }));
+  try {
+    for (const [status, code, message] of [[409, 'goal_reached', 'Esse presente acabou de atingir a meta ❤️'],
+      [409, 'gift_unavailable', 'Este presente não está mais disponível.'], [400, 'invalid_payment', 'Confira os dados do pagamento.']]) {
+      globalThis.__rejectionFixture = new GiftContributionError(status, code, message);
+      const response = await route.POST(new Request('https://fixture.invalid', { method: 'POST', body: '{}' }));
+      assert.equal(response.status, status); assert.deepEqual(await response.json(), { code, message });
+    }
+    globalThis.__rejectionFixture = new Error('MOCK_TOKEN MOCK_PAN MOCK_CVV MOCK_DOCUMENT MOCK_BIN MOCK_KEY fixture@example.invalid');
+    const response = await route.POST(new Request('https://fixture.invalid', { method: 'POST', body: '{}' }));
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { message: 'Não foi possível registrar a contribuição agora. Tente novamente em alguns instantes.' });
+    for (const value of [null, {}, { code: 'unknown', message: 'private' }, { code: 'goal_reached' }]) {
+      assert.equal(checkout.parseCardSubmissionRejection(409, value), null);
+    }
+    assert.equal(checkout.parseCardSubmissionRejection(503, { code: 'goal_reached', message: 'private' }), null);
+  } finally { delete globalThis.__rejectionFixture; }
 });
 
 test('Brick projection allows provider installments 1/12, rejects 13/debit, and copies no raw card data', () => {
@@ -187,7 +214,7 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
       if (url.endsWith('/status')) return statusResponse instanceof Response ? statusResponse.clone() : Response.json(statusResponse);
       if (blockedPost) await blockedPost;
       if (currentResponse instanceof Error) throw currentResponse;
-      return Response.json(currentResponse, { status: 201 });
+      return currentResponse instanceof Response ? currentResponse.clone() : Response.json(currentResponse, { status: 201 });
     };
     root = createRoot(container);
     await act(async () => { root.render(React.createElement(React.StrictMode, null, React.createElement(GiftContributionForm, { gift: currentGift, cardCheckoutEnabled: enabled }))); });
@@ -200,6 +227,69 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
     await act(async () => { await instances.at(-1).settings.callbacks.onSubmit(tokenData(installments, value), { paymentTypeId: 'credit_card' }); });
   }
   try {
+    await t.test('explicit pre-provider rejections show safe messages, discard ghosts and never poll or auto-retry', async () => {
+      for (const [code, status, message] of [
+        ['goal_reached', 409, 'Esse presente acabou de atingir a meta ❤️'],
+        ['gift_unavailable', 409, 'Este presente não está mais disponível.'],
+        ['invalid_payment', 400, 'Confira os dados do pagamento.'],
+        ['credit_card_unavailable', 409, 'Pagamento por cartão ainda não está disponível.'],
+      ]) {
+        const currentGift = await mount(); await card();
+        currentResponse = Response.json({ code, message }, { status }); await token();
+        assert.ok(container.textContent.includes(message));
+        assert.ok(!container.textContent.includes('verificando'));
+        assert.equal(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id), null);
+        assert.equal(checkout.recalledCardOperation(currentGift.id), undefined);
+        assert.equal(timers.size, 0);
+        assert.equal(calls.length, 1);
+        await unmount(); await mount(currentGift);
+        assert.equal(calls.length, 0); assert.equal(timers.size, 0); await unmount();
+      }
+    });
+    await t.test('existing-attempt conflicts stop misleading waiting but retain the key and cannot start a new payment', async () => {
+      for (const code of ['idempotency_conflict', 'payment_environment_mismatch', 'payment_expired']) {
+        const currentGift = await mount(); await card();
+        currentResponse = Response.json({ code, message: 'MOCK_TEMP_TOKEN private@example.invalid MOCK_PAN' }, { status: 409 }); await token();
+        const key = calls[0].body.idempotency_key;
+        assert.ok(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id).includes(key));
+        assert.ok(!container.textContent.includes('verificando'));
+        assert.equal(timers.size, 0);
+        assert.equal(button('INICIAR NOVA TENTATIVA'), undefined);
+        statusResponse = Response.json({}, { status: 404 }); await click('CONSULTAR PAGAMENTO');
+        assert.equal(button('TENTAR ENVIO COM A MESMA CHAVE'), undefined);
+        assert.equal(calls.filter(call => !call.url.endsWith('/status')).length, 1);
+        for (const sensitive of [key, 'MOCK_TEMP_TOKEN', 'private@example.invalid', 'MOCK_PAN']) {
+          assert.ok(!container.textContent.includes(sensitive)); assert.ok(!JSON.stringify(logs).includes(sensitive));
+        }
+        await unmount();
+      }
+    });
+    await t.test('validation on an uncertain same-key retry does not discard the earlier submission', async () => {
+      const currentGift = await mount(); await card(); currentResponse = new Error('MOCK_TIMEOUT'); await token();
+      const key = calls[0].body.idempotency_key;
+      assert.equal(timers.size, 1);
+      statusResponse = Response.json({}, { status: 404 }); await click('CONSULTAR PAGAMENTO');
+      assert.equal(calls.filter(call => !call.url.endsWith('/status')).length, 1);
+      await click('TENTAR ENVIO COM A MESMA CHAVE');
+      currentResponse = Response.json({ code: 'invalid_payment', message: 'Confira os dados do pagamento.' }, { status: 400 }); await token();
+      assert.ok(container.textContent.includes('Confira os dados do pagamento.'));
+      assert.ok(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id).includes(key));
+      assert.equal(timers.size, 0); assert.equal(button('VOLTAR AO FORMULÁRIO'), undefined);
+      await unmount();
+    });
+    await t.test('a definitive goal rejection on explicit same-key retry removes the old ghost', async () => {
+      const currentGift = await mount(); await card(); currentResponse = new Error('MOCK_TIMEOUT'); await token();
+      const key = calls[0].body.idempotency_key;
+      statusResponse = Response.json({}, { status: 404 }); await click('CONSULTAR PAGAMENTO');
+      assert.ok(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id).includes(key));
+      await click('TENTAR ENVIO COM A MESMA CHAVE');
+      currentResponse = Response.json({ code: 'goal_reached', message: 'Esse presente acabou de atingir a meta ❤️' }, { status: 409 }); await token();
+      assert.equal(dom.window.localStorage.getItem('pe:card-operation:v1:' + currentGift.id), null);
+      assert.equal(timers.size, 0);
+      const posts = calls.filter(call => !call.url.endsWith('/status'));
+      assert.equal(posts.length, 2); assert.equal(posts[1].body.idempotency_key, key);
+      assert.ok(!container.textContent.includes('verificando')); await unmount();
+    });
     await t.test('flag-off UI keeps Pix; TEST choice mounts once, switches back, closes and reopens cleanly', async () => {
       const before = instances.length;
       await mount(gift(), false); assert.equal(button('Cartão de crédito'), undefined); await unmount();

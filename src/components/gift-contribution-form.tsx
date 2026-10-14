@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { formatGoalAmount } from '@/lib/gifts/format';
 import type { Gift } from '@/lib/gifts/types';
 import type { CreditCardInput } from '@/lib/payments/contracts';
-import { cardCheckoutAmount, parseCardCheckoutResult, recalledCardOperation, rememberCardOperation, forgetCardOperation,
+import { cardCheckoutAmount, parseCardCheckoutResult, parseCardSubmissionRejection, recalledCardOperation, rememberCardOperation, forgetCardOperation,
   type CheckoutResult, type CardContributionDetails } from '@/lib/payments/card-checkout';
 import { CardPaymentBrick } from './card-payment-brick';
 import { readCardReference, withCardOperation, clearTerminalCardReference, cardReferencePrefix, cardReferenceRetentionMs } from '@/lib/payments/card-operation-storage';
@@ -49,6 +49,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
   const [regional, setRegional] = useState(previous?.details?.regional_division ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [submissionRejection, setSubmissionRejection] = useState<{ message: string; protected: boolean } | null>(null);
   const [payment, setPayment] = useState<PaymentResult | null>(previous?.result ?? null);
   const [copied, setCopied] = useState(false);
   const inFlight = useRef(false);
@@ -90,7 +91,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
         // A storage failure must not hide an authoritative backend result.
         // Keep the reference; a new operation still requires safe cleanup.
       }
-      if (mounted.current && idempotencyKey.current === key) { setPayment(result); setError(''); setRetryAllowed(false); }
+      if (mounted.current && idempotencyKey.current === key) { setPayment(result); setSubmissionRejection(null); setError(''); setRetryAllowed(false); }
     } catch { if (mounted.current && idempotencyKey.current === key) setError('Não foi possível consultar o pagamento. Tente consultar novamente.'); }
     finally { statusInFlight.current = false; }
   }, [gift.id]);
@@ -165,7 +166,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
       status: 'investigating', qr_code: null, qr_code_base64: null, ticket_url: null, expires_at: '' } };
     let persisted = false;
     try {
-      await withCardOperation(gift.id, async (reference, created) => {
+      await withCardOperation(gift.id, async (reference, created, discardRejected) => {
         const sameKeyRetry = explicitSameKeyRetry.current && idempotencyKey.current === reference.key;
         explicitSameKeyRetry.current = false;
         idempotencyKey.current = reference.key;
@@ -184,7 +185,27 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
             ...(card.payer ? { payer: card.payer } : {}), ...(card.device_id ? { device_id: card.device_id } : {}) }),
       });
       const raw: unknown = await response.json();
-      if (!response.ok) throw new Error('card_submission_unavailable');
+      if (!response.ok) {
+        const rejection = parseCardSubmissionRejection(response.status, raw);
+        if (!rejection) throw new Error('card_submission_unavailable');
+        // A fresh browser key with a validation/flag rejection has never been
+        // submitted before. On retries those same errors prove nothing about
+        // an earlier POST, so its durable reference remains protected.
+        const discard = rejection.absentContribution || (created &&
+          (rejection.validation || rejection.code === 'credit_card_unavailable' ||
+            (response.status === 404 && rejection.code === 'gift_unavailable')));
+        if (discard) {
+          discardRejected();
+          forgetCardOperation(gift.id);
+          idempotencyKey.current = null;
+        }
+        if (mounted.current) {
+          setPayment(null); setRetryAllowed(false); setCardAmount(null);
+          setSubmissionRejection({ message: rejection.message, protected: !discard });
+          setError('');
+        }
+        return;
+      }
       const result = parseCardCheckoutResult(raw);
       if (recalledCardOperation(gift.id)?.key === key) rememberCardOperation(gift.id, key, result, false, details);
       if (mounted.current) setPayment(result);
@@ -265,6 +286,17 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
   }
 
   if (recovering) return <p className={styles.waiting} role="status">Verificando operação anterior…</p>;
+
+  if (submissionRejection) return <section className={styles.payment} aria-live="polite">
+    <p className={styles.error} role="alert">{submissionRejection.message}</p>
+    {submissionRejection.protected
+      ? <button className={styles.copy} type="button" onClick={() => void checkCardStatus()}>CONSULTAR PAGAMENTO</button>
+      : <button className={styles.copy} type="button" onClick={() => {
+        setSubmissionRejection(null); cardSubmissionStarted.current = false;
+        explicitSameKeyRetry.current = false; setMethodLocked(false);
+        router.refresh();
+      }}>VOLTAR AO FORMULÁRIO</button>}
+  </section>;
 
   if (payment) {
     if (payment.payment_status === 'confirmed') {

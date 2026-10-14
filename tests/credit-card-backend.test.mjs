@@ -131,6 +131,24 @@ test('card request contract rejects raw data and preserves stable payment finger
 test('card backend with PostgreSQL and mocked Orders, never real network', async t => {
   const db = await createDatabase();
   try {
+    await t.test('unavailable/reached goals reject before contribution, claim or provider; status stays not found', async () => {
+      for (const code of ['gift_unavailable', 'goal_reached']) {
+        const f = await fixture(db, { environment: 'test' });
+        try {
+          const input = await f.request('goal');
+          if (code === 'gift_unavailable') await db.query('update gifts set active=false where id=$1', [input.gift_id]);
+          else await db.query(`insert into gift_contributions(gift_id,payment_environment,payment_method,
+            contributor_name,amount,payment_status,confirmed_at,idempotency_key,request_fingerprint)
+            values ($1,'test','external','Fixture',100,'confirmed',now(),gen_random_uuid(),repeat('a',64))`, [input.gift_id]);
+          await assert.rejects(f.service.createGiftPayment(input), error => error.status === 409 && error.code === code);
+          assert.equal(f.http.length, 0); assert.equal(f.writes.length, 0);
+          assert.equal(f.calls.some(call => call.path.includes('claim_gift')), false);
+          assert.equal(await f.state(input.idempotency_key), undefined);
+          await assert.rejects(f.service.getGiftPaymentStatus({ idempotency_key: input.idempotency_key }), error => error.status === 404);
+          assert.equal(f.http.length, 0);
+        } finally { f.restore(); }
+      }
+    });
     await t.test('Preview TEST checkpoints preserve submission and exclude all transient card/PII data', async () => {
       const savedPreview = process.env.VERCEL_ENV;
       const savedInfo = console.info;

@@ -1,5 +1,34 @@
 import { parseContributionPayment, type CreditCardInput } from './contracts';
 
+// Explicit application rejections are not transport failures. Project only
+// known codes/messages; never render arbitrary provider/database error bodies.
+const submissionMessages: Record<string, string> = {
+  goal_reached: 'Esse presente acabou de atingir a meta ❤️',
+  gift_unavailable: 'Este presente não está mais disponível.',
+  credit_card_unavailable: 'Pagamento por cartão ainda não está disponível.',
+  invalid_form: 'Confira os dados da contribuição.',
+  invalid_phone: 'Informe um WhatsApp válido com DDD.',
+  invalid_amount: 'Informe um valor válido para a contribuição.',
+  invalid_name: 'Informe seu nome.',
+  invalid_email: 'Informe um e-mail válido.',
+  invalid_payment: 'Confira os dados do pagamento.',
+  vest_name_required: 'Informe o nome do colete para este Presente Insano.',
+  idempotency_conflict: 'Esta tentativa já foi utilizada com outros dados. Consulte a tentativa existente antes de qualquer novo envio.',
+  payment_environment_mismatch: 'Esta tentativa não está disponível neste ambiente.',
+  payment_expired: 'Esta tentativa expirou. Consulte o pagamento antes de iniciar outra contribuição.',
+};
+export function parseCardSubmissionRejection(status: number, value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { code, message } = value as Record<string, unknown>;
+  if (typeof code !== 'string' || typeof message !== 'string' || !Object.hasOwn(submissionMessages, code)) return null;
+  const validation = ['invalid_form', 'invalid_phone', 'invalid_amount', 'invalid_name', 'invalid_email', 'invalid_payment', 'vest_name_required'].includes(code);
+  if (!(validation ? status === 400 : status === 409 || (status === 404 && code === 'gift_unavailable'))) return null;
+  return { code, message: submissionMessages[code], validation,
+    // Only the availability 409s follow an absent existing-key lookup.
+    // The gift 404/400s run before that lookup and cannot clear an old key.
+    absentContribution: status === 409 && ['goal_reached', 'gift_unavailable'].includes(code) };
+}
+
 export type CheckoutResult = {
   payment_status: 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired';
   payment: null | {

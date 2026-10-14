@@ -17,7 +17,7 @@ export function readCardReference(giftId: string): CardOperationReference | null
 // Web Locks serialize selection AND sending across tabs. No racy storage lease
 // fallback: unsupported browsers can follow an operation but cannot submit cards.
 export async function withCardOperation<T>(giftId: string,
-  action: (reference: CardOperationReference, created: boolean) => Promise<T>): Promise<T> {
+  action: (reference: CardOperationReference, created: boolean, discardRejected: () => void) => Promise<T>): Promise<T> {
   if (!navigator.locks || !uuid.test(giftId)) throw new Error('card_coordination_unavailable');
   return navigator.locks.request(cardReferencePrefix + giftId, async () => {
     let reference = readCardReference(giftId);
@@ -27,7 +27,12 @@ export async function withCardOperation<T>(giftId: string,
       window.localStorage.setItem(cardReferencePrefix + giftId, JSON.stringify(reference));
       if (readCardReference(giftId)?.key !== reference.key) throw new Error('card_storage_unavailable');
     }
-    return action(reference, created);
+    // Called only for a proven pre-submission rejection, inside this same lock.
+    // Never reacquire the lock here (deadlock) or discard on a status 404 alone.
+    const key = reference.key;
+    return action(reference, created, () => {
+      if (readCardReference(giftId)?.key === key) window.localStorage.removeItem(cardReferencePrefix + giftId);
+    });
   });
 }
 
