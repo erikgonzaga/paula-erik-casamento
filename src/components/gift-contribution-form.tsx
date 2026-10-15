@@ -372,7 +372,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
       <p className={styles.cardNote}>Pagamento de homologação. Os dados do cartão são preenchidos no formulário seguro do Mercado Pago.</p>
       {submitting && <p className={styles.waiting} role="status">Processando o pagamento…</p>}
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <CardPaymentBrick amount={cardAmount} email={email} onSubmit={submitCard} installmentDiagnosticsEnabled={cardCheckoutEnabled} />
+      <CardPaymentBrick amount={cardAmount} email={email} onSubmit={submitCard} />
       <button className={styles.copy} type="button" disabled={submitting || methodLocked} onClick={() => {
         if (idempotencyKey.current) return;
         setCardAmount(null); setMethod('pix');

@@ -12,7 +12,6 @@ const moduleUrl = value => `data:text/javascript;base64,${Buffer.from(value).toS
 const checkout = await import(await typescriptModule('../src/lib/payments/card-checkout.ts'));
 const lifecycle = await import(await typescriptModule('../src/lib/payments/card-brick-lifecycle.ts'));
 const policy = await import(await typescriptModule('../src/lib/payments/card-checkout-policy.ts'));
-const installmentDiagnostic = await import(await typescriptModule('../src/lib/payments/card-installment-diagnostics.ts'));
 const settings = () => ({ initialization: { amount: 50, payer: { email: 'fixture@example.invalid' } },
   customization: { paymentMethods: { types: { excluded: ['debit_card', 'prepaid_card'] }, minInstallments: 1, maxInstallments: 12 }, visual: { style: { theme: 'flat' } } },
   callbacks: { onReady() {}, onError() {}, async onSubmit() {} } });
@@ -22,39 +21,6 @@ const tokenData = (installments = 1, token = 'MOCK_TEMP_TOKEN') => ({ token, pay
 const paymentResult = (status = 'pending', detail = 'waiting', challenge) => ({ payment_status: status,
   payment: { status: detail, expires_at: '2026-10-10T00:00:00Z', qr_code: null, qr_code_base64: null, ticket_url: null,
     ...(challenge ? { challenge: { url: challenge } } : {}) } });
-
-const installmentResponse = (method = 'master') => [{ payment_method_id: method, issuer: { id: 210, name: 'Banco de teste',
-  document: 'MOCK_DOCUMENT' }, bin: '8'.repeat(8), card_token: 'MOCK_TEMP_TOKEN', payer: { name: 'MOCK_HOLDER' },
-  payer_costs: [{ installments: 2, installment_rate: 5.42, installment_amount: 105.42, total_amount: 210.84,
-    discount_rate: 0, installment_rate_collector: ['MERCADOPAGO'], labels: ['CFT_5.42%'], payment_method_option_id: 'option-2',
-    cvv: 'MOCK_CVV', device_id: 'MOCK_DEVICE', recommended_message: 'MOCK_PRIVATE_MESSAGE' }] }];
-
-test('installment diagnostic projects only allowed fields, drops sensitive/invalid data and formats BRL/rates', () => {
-  const offers = installmentDiagnostic.sanitizeInstallmentOffers(installmentResponse(), '8'.repeat(8));
-  assert.deepEqual(offers, [{ payment_method_id: 'master', issuer_id: '210', issuer_name: 'Banco de teste',
-    installments: 2, installment_rate: 5.42, installment_amount: 105.42, total_amount: 210.84, discount_rate: 0,
-    installment_rate_collector: ['MERCADOPAGO'], labels: ['CFT_5.42%'], payment_method_option_id: 'option-2' }]);
-  const safe = JSON.stringify(offers);
-  for (const sensitive of ['MOCK_DOCUMENT', 'MOCK_TEMP_TOKEN', 'MOCK_HOLDER', 'MOCK_CVV', 'MOCK_DEVICE', 'MOCK_PRIVATE_MESSAGE', '8'.repeat(8)]) {
-    assert.ok(!safe.includes(sensitive));
-  }
-  const raw = installmentResponse('visa');
-  Object.assign(raw[0].payer_costs[0], { installment_amount: '200.00', total_amount: NaN, installment_rate: Infinity,
-    labels: ['SAFE', '8'.repeat(8), '9'.repeat(16), 'private@example.invalid', 'https://private.invalid/token', '\u0000'],
-    payment_method_option_id: { token: 'MOCK_TEMP_TOKEN' } });
-  const [projected] = installmentDiagnostic.sanitizeInstallmentOffers(raw, '8'.repeat(8));
-  assert.equal(projected.installment_amount, 200); assert.equal(projected.total_amount, null);
-  assert.equal(projected.installment_rate, null); assert.equal(projected.payment_method_option_id, null);
-  assert.deepEqual(projected.labels, ['SAFE']);
-  for (const invalid of [null, {}, 'raw-error', [{ payer_costs: [null, { installments: 0 }, { installments: 1.5 }] }]]) {
-    assert.deepEqual(installmentDiagnostic.sanitizeInstallmentOffers(invalid), []);
-  }
-  assert.equal(installmentDiagnostic.formatInstallmentMoney(200).replace(/\s/g, ' '), 'R$ 200,00');
-  assert.equal(installmentDiagnostic.formatInstallmentMoney(105.42).replace(/\s/g, ' '), 'R$ 105,42');
-  assert.equal(installmentDiagnostic.formatInstallmentMoney(null), '—');
-  assert.equal(installmentDiagnostic.formatInstallmentRate(5.42), '5,42%');
-  assert.equal(installmentDiagnostic.formatInstallmentRate(0), '0%');
-});
 
 test('card checkout policy is fail-closed: test + explicit flag + public key; production always blocked', async () => {
   const keys = ['PAYMENTS_ENVIRONMENT', 'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'];
@@ -184,9 +150,9 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
       dom.window.document.getElementById(id).textContent = 'MOCK SECURE BRICK';
       settings.callbacks.onReady();
       return { async unmount() { instance.removed++; } };
-    } }; }, refresh() { refreshes++; }, async conditions() { return []; },
+    } }; }, refresh() { refreshes++; },
   };
-  const sdk = moduleUrl('export const loadCardBrickBuilder = () => globalThis.__cardUI.load(); export const cardDeviceId = () => "MOCK_DEVICE"; export const getCardInstallments = (...args) => globalThis.__cardUI.conditions(...args);');
+  const sdk = moduleUrl('export const loadCardBrickBuilder = () => globalThis.__cardUI.load(); export const cardDeviceId = () => "MOCK_DEVICE";');
   const navigation = moduleUrl('export const useRouter = () => ({ refresh: () => globalThis.__cardUI.refresh() });');
   const image = moduleUrl(`import React from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
     export default function Image({unoptimized, ...props}) { return React.createElement('img', props); }`);
@@ -480,57 +446,6 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
         assert.equal(temporary.card_token, '');
         assert.equal(temporary.payer, undefined); assert.equal(temporary.device_id, undefined);
         await unmount();
-      }
-    });
-    await t.test('TEST-only installment panel changes safely before submit, ignores old responses and sanitizes errors', async () => {
-      const { CardPaymentBrick } = await import(await typescriptModule('../src/components/card-payment-brick.tsx', replacements));
-      const keys = ['PAYMENTS_ENVIRONMENT', 'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'];
-      const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-      const requests = [], beforeStorage = storageCalls, beforeHTTP = calls.length;
-      globalThis.__cardUI.conditions = (amount, bin) => new Promise((resolve, reject) => requests.push({ amount, bin, resolve, reject }));
-      async function mountDiagnostic(environment, flag = 'true') {
-        process.env.PAYMENTS_ENVIRONMENT = environment; process.env.ENABLE_CREDIT_CARD_CHECKOUT = flag;
-        process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = 'MOCK_PUBLIC_KEY';
-        root = createRoot(container);
-        await act(async () => { root.render(React.createElement(CardPaymentBrick, { amount: 200, email: 'fixture@example.invalid',
-          installmentDiagnosticsEnabled: policy.creditCardCheckoutEnabled(), onSubmit() { assert.fail('Diagnostic must not submit a payment'); } })); });
-      }
-      async function binChanged(bin) { await act(async () => { instances.at(-1).settings.callbacks.onBinChange(bin); }); }
-      try {
-        for (const [environment, flag] of [['production', 'true'], ['test', 'false']]) {
-          await mountDiagnostic(environment, flag);
-          assert.equal(instances.at(-1).settings.callbacks.onBinChange, undefined);
-          assert.ok(!container.textContent.includes('Diagnóstico temporário'));
-          await unmount();
-        }
-        await mountDiagnostic('test');
-        assert.ok(container.textContent.includes('R$\u00a0200,00'));
-        assert.equal(instances.at(-1).settings.initialization.amount, 200);
-        await binChanged('8'.repeat(8)); assert.equal(requests[0].amount, 200);
-        assert.equal(requests[0].bin, '8'.repeat(8));
-        await binChanged('7'.repeat(8));
-        await act(async () => { requests[1].resolve(installmentResponse('amex')); });
-        assert.ok(container.textContent.includes('amex'));
-        assert.ok(container.textContent.includes('210,84'));
-        await act(async () => { requests[0].resolve(installmentResponse('visa')); });
-        assert.ok(!container.textContent.includes('visa'));
-        await binChanged('6'.repeat(8));
-        assert.ok(!container.textContent.includes('amex')); assert.ok(container.textContent.includes('Consultando condições'));
-        await act(async () => { requests[2].reject(new Error('MOCK_PRIVATE_ERROR ' + '6'.repeat(8))); });
-        assert.ok(container.textContent.includes('Não foi possível consultar'));
-        assert.ok(!container.textContent.includes('MOCK_PRIVATE_ERROR'));
-        await binChanged('partial'); assert.equal(requests.length, 3);
-        assert.ok(container.textContent.includes('Aguardando identificação'));
-        assert.equal(storageCalls, beforeStorage); assert.equal(calls.length, beforeHTTP);
-        for (const sensitive of ['MOCK_DOCUMENT', 'MOCK_TEMP_TOKEN', 'MOCK_HOLDER', 'MOCK_CVV', 'MOCK_DEVICE', 'MOCK_PRIVATE_MESSAGE', '7'.repeat(8), '6'.repeat(8)]) {
-          assert.ok(!container.textContent.includes(sensitive)); assert.ok(!JSON.stringify(logs).includes(sensitive));
-        }
-        await binChanged('5'.repeat(8)); await unmount();
-        await act(async () => { requests[3].resolve(installmentResponse('master')); });
-        assert.equal(container.textContent, '');
-      } finally {
-        await unmount(); globalThis.__cardUI.conditions = async () => [];
-        for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
       }
     });
     assert.ok(refreshes >= 3);
