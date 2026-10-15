@@ -38,6 +38,6 @@ export function CardPaymentBrick({ amount, email, onSubmit }: {
   return <section className={styles.cardBrick} aria-label="Pagamento com cartão de crédito">
     {loading && <p className={styles.waiting} role="status">Preparando o formulário seguro…</p>}
     {failed && <p className={styles.error} role="alert">Não foi possível carregar o formulário do cartão. Volte ao Pix ou recarregue a página antes de tentar novamente.</p>}
-    <div id={id} />
+    <div id={id} data-mp-brick-host />
   </section>;
 }

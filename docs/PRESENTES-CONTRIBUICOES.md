@@ -4,6 +4,10 @@ O casal confirmou o histórico remoto de migrations até `202609170003_fix_gift_
 
 ## Catálogo final
 
+Na homologação de cartão, o catálogo seleciona o progresso pelo ambiente do servidor: `PAYMENTS_ENVIRONMENT=test` consulta `get_gift_progress_for_environment('test')` com acesso privado server-side; produção mantém `get_gift_progress()` público. Falha da consulta TEST não usa valores de produção como fallback.
+
+A API de contribuição retorna `{ code, message }` para `GiftContributionError`, sem detalhes de banco/provedor. O checkout diferencia rejeições conhecidas de comunicação inconclusiva. Os 409 `goal_reached` e `gift_unavailable` ocorrem após a busca por contribuição existente pela chave; removem a referência local rejeitada sob o mesmo Web Lock, sem polling. Validação 400 e cartão desabilitado só liberam uma referência recém-criada: em retry podem coexistir com uma submissão anterior. Conflitos de idempotência, ambiente e expiração preservam a referência, mostram mensagem segura e permitem consulta explícita, sem liberar nova cobrança. Timeout/resposta desconhecida continuam em investigação. Um 404 isolado nunca cria nova chave automaticamente.
+
 `gifts` mantém `id`, `name`, `slug` único, `description`, `category`, `image_url`, `active`, `featured`, `display_order`, `gift_type`, `allow_multiple`, `created_at` e `updated_at`, com tipos/defaults/constraints anteriores. `price` é renomeada para `target_amount numeric(10,2)` nullable; os valores existentes são preservados. Adiciona `funding_mode text not null default 'goal'`.
 
 - `goal`: meta positiva obrigatória, sem teto financeiro. Uma contribuição iniciada antes de a meta ser atingida pode ultrapassar o restante; ao atingir a meta confirmada, novas contribuições são recusadas. Pix já emitidos continuam válidos e são registrados integralmente se pagos.

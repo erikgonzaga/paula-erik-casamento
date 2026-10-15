@@ -3,6 +3,7 @@ import 'server-only';
 import type { Gift } from '@/lib/gifts/types';
 import { combineGiftProgress } from '@/lib/gifts/progress';
 import { publicDatabase, PublicDatabaseError } from '@/lib/supabase/public-server';
+import { database } from '@/lib/supabase/server';
 
 const selection = [
   'id',
@@ -22,7 +23,11 @@ const selection = [
 export async function getActiveGifts(): Promise<Gift[]> {
   const [rows, progress] = await Promise.all([
     publicDatabase<Gift[]>(`gifts?select=${selection}&active=eq.true&order=display_order.asc,id.asc`),
-    publicDatabase<unknown>('rpc/get_gift_progress').catch(() => null),
+    // TEST aggregates are private and must stay server-side. Production keeps
+    // the public RPC and its existing permissions/failure behavior.
+    (process.env.PAYMENTS_ENVIRONMENT === 'test'
+      ? database<unknown>('rpc/get_gift_progress_for_environment', { p_environment: 'test' })
+      : publicDatabase<unknown>('rpc/get_gift_progress')).catch(() => null),
   ]);
 
   if (!Array.isArray(rows)) throw new PublicDatabaseError();

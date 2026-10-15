@@ -138,8 +138,9 @@ async function claimAttempt(contributionId: string, payment?: ContributionPaymen
   if (rows[0].contribution_id !== contributionId) throw new Error('payment_contribution_mismatch');
   // The unchanged Pix RPC omits method metadata; its existing inserts are
   // protected by the contribution/method trigger from stage 1.
-  return card ? rows[0] : { ...rows[0], payment_method: 'pix' as const,
+  const claimed = card ? rows[0] : { ...rows[0], payment_method: 'pix' as const,
     installments: null, provider_payment_method_id: 'pix' };
+  return claimed;
 }
 
 async function getAttemptByContribution(contributionId: string) {
@@ -230,8 +231,9 @@ async function createAndReconcile(attempt: PaymentAttempt, contribution: StoredC
   };
   const order = card ? await createCreditCardOrder({ ...input, ...card }) : await createPixOrder(input);
   const status = await reconcile(attempt, order);
+  const persisted = await getAttemptByContribution(contribution.id) ?? attempt;
   return {
-    attempt: await getAttemptByContribution(contribution.id) ?? attempt,
+    attempt: persisted,
     status,
     order,
   };
