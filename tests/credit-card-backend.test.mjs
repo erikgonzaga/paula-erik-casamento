@@ -8,17 +8,22 @@ const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(code).toStr
 const contracts = await import(await typescriptModule('../src/lib/payments/contracts.ts'));
 const domain = await import(await typescriptModule('../src/lib/gifts/contribution.ts'));
 const client = await import(await typescriptModule('../src/lib/payments/mercado-pago/client.ts'));
+const policy = await import(await typescriptModule('../src/lib/payments/card-checkout-policy.ts'));
 let fixtureId = 0;
 
 async function fixture(db, { environment = 'production', post = ['processing', 'in_process'] } = {}) {
   const name = `__card_backend_${++fixtureId}`;
   const writes = [], calls = [], http = [];
   const saved = Object.fromEntries(['PAYMENTS_ENVIRONMENT', 'MERCADO_PAGO_ACCESS_TOKEN',
-    'MERCADO_PAGO_USER_ID', 'MERCADO_PAGO_APPLICATION_ID', 'MERCADO_PAGO_WEBHOOK_SECRET', 'NODE_ENV']
+    'MERCADO_PAGO_USER_ID', 'MERCADO_PAGO_APPLICATION_ID', 'MERCADO_PAGO_WEBHOOK_SECRET', 'NODE_ENV',
+    'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY']
     .map(key => [key, process.env[key]]));
   process.env.PAYMENTS_ENVIRONMENT = environment;
-  process.env.MERCADO_PAGO_ACCESS_TOKEN = 'MOCK_ACCESS_TOKEN_NEVER_REAL';
+  process.env.MERCADO_PAGO_ACCESS_TOKEN = environment === 'production'
+    ? 'MOCK_PRODUCTION_ACCESS_TOKEN_NEVER_REAL' : 'MOCK_TEST_ACCESS_TOKEN_NEVER_REAL';
   process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'MOCK_SIGNATURE_SECRET_NEVER_REAL';
+  delete process.env.ENABLE_CREDIT_CARD_CHECKOUT;
+  process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = 'MOCK_PUBLIC_KEY_NEVER_REAL';
   delete process.env.MERCADO_PAGO_USER_ID;
   delete process.env.MERCADO_PAGO_APPLICATION_ID;
   const savedFetch = globalThis.fetch;
@@ -192,7 +197,11 @@ test('card backend with PostgreSQL and mocked Orders, never real network', async
           assert.equal(f.http[0].headers['X-Idempotency-Key'], row.provider_idempotency_key);
           assert.equal(f.http[0].headers['X-meli-session-id'], input.device_id);
           assert.equal(body.payer.email, input.contributor_email);
-          assert.ok(!f.http[0].body.includes('APRO'));
+          assert.equal(body.payer.first_name, input.contributor_name);
+          assert.equal(f.http[0].headers.Authorization, 'Bearer MOCK_PRODUCTION_ACCESS_TOKEN_NEVER_REAL');
+          for (const marker of ['APRO', 'TESTUSER', 'test@testuser.com', 'test_user_br@testuser.com', 'MOCK_TEST_ACCESS_TOKEN_NEVER_REAL']) {
+            assert.ok(!JSON.stringify(f.http[0]).includes(marker));
+          }
           assert.equal(body.config.online.transaction_security.validation, 'on_fraud_risk');
           assert.equal(Object.hasOwn(body.transactions.payments[0], 'expiration_time'), false);
           const persisted = JSON.stringify([row, f.writes, f.calls]);
@@ -258,20 +267,48 @@ test('card backend with PostgreSQL and mocked Orders, never real network', async
       } finally { f.restore(); }
     });
 
-    await t.test('3DS returns only transient HTTPS challenge, then status GET confirms', async () => {
+    await t.test('production API uses the explicit flag; disabling sales preserves 3DS status reconciliation', async () => {
       const f = await fixture(db, { post: ['action_required', 'pending_challenge'] });
       try {
         const input = await f.request();
-        const result = await f.service.createGiftPayment(input);
+        const httpUrl = moduleUrl('export const assertSameOrigin=()=>{}; export const limit=async()=>{}; export const readBody=r=>r.json();');
+        const replacements = { '@/services/gift-payments': f.serviceUrl, '@/lib/invitations/http': httpUrl };
+        const creation = await import(await typescriptModule('../src/app/api/gift-contributions/route.ts', replacements));
+        const status = await import(await typescriptModule('../src/app/api/gift-contributions/status/route.ts', replacements));
+        process.env.ENABLE_CREDIT_CARD_CHECKOUT = 'true';
+        assert.equal(policy.creditCardCheckoutEnabled(), true);
+        const created = await creation.POST(new Request('https://fixture.invalid/api/gift-contributions', {
+          method: 'POST', body: JSON.stringify(input),
+        }));
+        assert.equal(created.status, 201);
+        const result = await created.json();
         assert.equal(result.payment_status, 'pending');
         assert.equal(result.payment.status, 'action_required');
         assert.deepEqual(result.payment.challenge, { url: 'https://issuer.example/challenge?temporary=MOCK_CHALLENGE' });
         assert.ok(!JSON.stringify([f.writes, f.calls, await f.state(input.idempotency_key)]).includes('MOCK_CHALLENGE'));
+        delete process.env.ENABLE_CREDIT_CARD_CHECKOUT;
+        assert.equal(policy.creditCardCheckoutEnabled(), false);
+        const before = { calls: f.calls.length, writes: f.writes.length, http: f.http.length };
+        const blocked = await creation.POST(new Request('https://fixture.invalid/api/gift-contributions', {
+          method: 'POST', body: JSON.stringify({ ...input, idempotency_key: randomUUID() }),
+        }));
+        assert.equal(blocked.status, 409);
+        assert.equal((await blocked.json()).code, 'credit_card_unavailable');
+        assert.deepEqual({ calls: f.calls.length, writes: f.writes.length, http: f.http.length }, before);
+        const statusRequest = () => new Request('https://fixture.invalid/api/gift-contributions/status', {
+          method: 'POST', body: JSON.stringify({ idempotency_key: input.idempotency_key }),
+        });
+        const stillPending = await status.POST(statusRequest());
+        assert.equal(stillPending.status, 200);
+        assert.equal((await stillPending.json()).payment_status, 'pending', 'A challenge alone never confirms payment');
         f.setGet('processed', 'accredited');
-        const response = await f.service.getGiftPaymentStatus({ idempotency_key: input.idempotency_key });
+        const checked = await status.POST(statusRequest());
+        assert.equal(checked.status, 200);
+        const response = await checked.json();
         assert.equal(response.payment_status, 'confirmed');
         assert.ok(!Object.hasOwn(response.payment, 'challenge'));
-        assert.deepEqual(f.http.map(call => call.method), ['POST', 'GET']);
+        assert.deepEqual(f.http.map(call => call.method), ['POST', 'GET', 'GET']);
+        assert.ok(f.http.every(call => call.headers.Authorization === 'Bearer MOCK_PRODUCTION_ACCESS_TOKEN_NEVER_REAL'));
       } finally { f.restore(); }
     });
 
@@ -321,12 +358,16 @@ test('card backend with PostgreSQL and mocked Orders, never real network', async
       } finally { f.restore(); }
     });
 
-    await t.test('signed webhook and scheduler reconcile known card Orders with no new charge', async () => {
+    await t.test('signed webhook and scheduler reconcile known card Orders even with new sales disabled', async () => {
       const f = await fixture(db, { post: ['processing', 'in_process'] });
       try {
         const input = await f.request();
+        process.env.ENABLE_CREDIT_CARD_CHECKOUT = 'true';
         await f.service.createGiftPayment(input);
         const row = await f.state(input.idempotency_key);
+        delete process.env.ENABLE_CREDIT_CARD_CHECKOUT;
+        assert.equal(policy.creditCardCheckoutEnabled(), false);
+        const beforeWebhookPosts = f.http.filter(call => call.method === 'POST').length;
         f.setGet('processed', 'accredited');
         const sdk = new URL('../node_modules/mercadopago/dist/index.js', import.meta.url).href;
         const webhook = await import(await typescriptModule('../src/app/api/payments/mercado-pago/webhook/route.ts', {
@@ -335,18 +376,21 @@ test('card backend with PostgreSQL and mocked Orders, never real network', async
         const ts = String(Math.floor(Date.now() / 1000)), requestId = 'mock-request-id';
         const v1 = createHmac('sha256', process.env.MERCADO_PAGO_WEBHOOK_SECRET)
           .update(`id:${f.order.id.toLowerCase()};request-id:${requestId};ts:${ts};`).digest('hex');
-        const response = await webhook.POST(new Request(`https://fixture.invalid/api/payments/mercado-pago/webhook?type=order&data.id=${f.order.id}`, {
+        const response = await webhook.POST(new Request(`https://fixture.invalid/api/payments/mercado-pago/webhook?type=order&data.id=${row.provider_order_id}`, {
           method: 'POST', headers: { 'x-request-id': requestId, 'x-signature': `ts=${ts},v1=${v1}` },
         }));
         assert.equal(response.status, 200);
         assert.equal((await f.state(input.idempotency_key)).payment_status, 'confirmed');
-        assert.equal(f.http.filter(call => call.method === 'POST').length, 1);
+        assert.equal(f.http.filter(call => call.method === 'POST').length, beforeWebhookPosts);
         assert.equal((await db.query('select count(*)::int as n from payment_attempts where contribution_id=$1', [row.id])).rows[0].n, 1);
+        process.env.ENABLE_CREDIT_CARD_CHECKOUT = 'true';
         const pending = await f.request();
         f.setGet('processing', 'in_process');
         await f.service.createGiftPayment(pending);
         const pendingRow = await f.state(pending.idempotency_key);
         await db.query("update payment_attempts set provider_checked_at=now()-interval '10 minutes' where id=$1", [pendingRow.attempt_id]);
+        delete process.env.ENABLE_CREDIT_CARD_CHECKOUT;
+        assert.equal(policy.creditCardCheckoutEnabled(), false);
         f.setGet('processed', 'accredited');
         const beforePosts = f.http.filter(call => call.method === 'POST').length;
         const batch = await f.service.reconcilePendingGiftPaymentsBatch();
