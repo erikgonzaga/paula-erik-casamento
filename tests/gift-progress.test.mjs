@@ -2,6 +2,44 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { typescriptModule } from './typescript-fixture.mjs';
+
+test('catalog reads private TEST progress, preserves public production progress and never mixes failures', async () => {
+  const moduleUrl = value => `data:text/javascript;base64,${Buffer.from(value).toString('base64')}`;
+  const saved = process.env.PAYMENTS_ENVIRONMENT;
+  const calls = [];
+  globalThis.__catalogProgress = async (kind, path, body) => {
+    calls.push({ kind, path, body });
+    if (path.startsWith('gifts?')) return [{ id: 'fixture', funding_mode: 'goal', target_amount: 800 }];
+    if (globalThis.__catalogFail) throw new Error('MOCK_UNAVAILABLE');
+    return [{ gift_id: 'fixture', target_amount: 800,
+      total_raised: kind === 'private' ? 975 : 57, percentage: kind === 'private' ? 100 : 7.13,
+      remaining_amount: kind === 'private' ? 0 : 743, goal_reached: kind === 'private' }];
+  };
+  const publicModule = moduleUrl('export class PublicDatabaseError extends Error {} export const publicDatabase = (...args) => globalThis.__catalogProgress("public", ...args);');
+  const privateModule = moduleUrl('export const database = (...args) => globalThis.__catalogProgress("private", ...args);');
+  try {
+    const { getActiveGifts } = await import(await typescriptModule('../src/services/gifts.ts', {
+      '@/lib/supabase/public-server': publicModule, '@/lib/supabase/server': privateModule }));
+    for (const environment of ['test', 'production']) {
+      process.env.PAYMENTS_ENVIRONMENT = environment; calls.length = 0;
+      const [result] = await getActiveGifts();
+      const test = environment === 'test';
+      assert.equal(result.progress.remaining_amount, test ? 0 : 743);
+      assert.equal(result.progress.goal_reached, test);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls[1], test
+        ? { kind: 'private', path: 'rpc/get_gift_progress_for_environment', body: { p_environment: 'test' } }
+        : { kind: 'public', path: 'rpc/get_gift_progress', body: undefined });
+    }
+    process.env.PAYMENTS_ENVIRONMENT = 'test'; globalThis.__catalogFail = true; calls.length = 0;
+    assert.equal((await getActiveGifts())[0].progress, null);
+    assert.equal(calls.filter(call => call.path === 'rpc/get_gift_progress').length, 0);
+  } finally {
+    if (saved === undefined) delete process.env.PAYMENTS_ENVIRONMENT; else process.env.PAYMENTS_ENVIRONMENT = saved;
+    delete globalThis.__catalogProgress; delete globalThis.__catalogFail;
+  }
+});
 
 async function loadPureModule(path) {
   const source = await readFile(new URL(path, import.meta.url), 'utf8');

@@ -226,7 +226,8 @@ async function request(path: string, init: RequestInit, fetchImplementation: Fet
     throw new MercadoPagoError('unavailable', diagnostic);
   }
   try {
-    return parseOrder(await response.json());
+    const order = parseOrder(await response.json());
+    return order;
   } catch (error) {
     logDevelopmentDiagnostic('mercado-pago', { operation, httpStatus: response.status, code: 'invalid_response' });
     if (error instanceof MercadoPagoError) throw error;
@@ -273,7 +274,7 @@ export function createPixOrder(input: OrderCreationInput, fetchImplementation: F
         expiration_time: 'PT30M',
       }] },
     }),
-  }, fetchImplementation);
+  }, fetchImplementation, [], false);
 }
 
 export function createCreditCardOrder(input: OrderCreationInput & CreditCardInput, fetchImplementation: Fetch = fetch) {
@@ -294,7 +295,7 @@ export function createCreditCardOrder(input: OrderCreationInput & CreditCardInpu
         id: card.payment_method_id, type: 'credit_card', token: card.card_token, installments: card.installments,
       } }] },
     }),
-  }, fetchImplementation, [card.card_token, card.device_id ?? '', card.payer?.identification.number ?? '', input.payerEmail, input.payerName]);
+  }, fetchImplementation, [card.card_token, card.device_id ?? '', card.payer?.identification.number ?? '', input.payerEmail, input.payerName], false);
 }
 
 export function normalizeMercadoPagoAmount(value: string | number): string {

@@ -186,3 +186,21 @@ test('client contribution code never contains the service-role environment key',
   assert.ok(!clientSource.includes('SUPABASE_SERVICE_ROLE_KEY'));
   assert.ok(!clientSource.includes('gift_contributions'));
 });
+
+test('availability 409s follow an absent existing-key check; existing payments survive inactive/reached gifts', async () => {
+  const prepared = preparePendingContribution(request, goal, progress);
+  for (const [snapshot, aggregate, code] of [
+    [{ ...goal, active: false }, progress, 'gift_unavailable'],
+    [goal, { remaining_amount: 0, goal_reached: true }, 'goal_reached'],
+  ]) {
+    let existingChecked = false, writes = 0;
+    const deps = { getGift: async () => snapshot, getProgress: async () => aggregate,
+      expirePending: async () => {}, getExisting: async () => { existingChecked = true; return null; },
+      insert: async () => { writes++; throw new Error('must not write'); } };
+    await assert.rejects(createPendingContributionWith(request, deps), errorCode(code));
+    assert.equal(existingChecked, true); assert.equal(writes, 0);
+    const old = stored(prepared);
+    assert.equal((await createPendingContributionWith(request, { ...deps, getExisting: async () => old })).contribution.id, old.id);
+    assert.equal(writes, 0);
+  }
+});

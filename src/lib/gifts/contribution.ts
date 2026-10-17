@@ -289,6 +289,9 @@ export async function createPendingContributionWith(
   if (existing) return existingResult(existing, contribution.request_fingerprint, environment);
 
   const progress = gift!.funding_mode === 'goal' ? await dependencies.getProgress(request.gift_id) : null;
+  // The existing-key check above comes before these 409s: an existing payment
+  // is resumed even if its gift subsequently becomes inactive or reaches goal.
+  // Neither rejection below inserts a contribution or submits a provider Order.
   validateContributionAvailability(gift!, progress);
   try {
     const inserted = await dependencies.insert(contribution);
