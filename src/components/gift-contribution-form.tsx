@@ -369,7 +369,7 @@ export function GiftContributionForm({ gift, cardCheckoutEnabled=false }: { gift
   if (method === 'credit_card' && cardAmount !== null) {
     return <div className={styles.form}>
       <div className={styles.summary}><strong>Contribuição: {formatGoalAmount(cardAmount)}</strong></div>
-      <p className={styles.cardNote}>Pagamento de homologação. Os dados do cartão são preenchidos no formulário seguro do Mercado Pago.</p>
+      <p className={styles.cardNote}>Os dados do cartão são preenchidos no formulário seguro do Mercado Pago.</p>
       {submitting && <p className={styles.waiting} role="status">Processando o pagamento…</p>}
       {error && <p className={styles.error} role="alert">{error}</p>}
       <CardPaymentBrick amount={cardAmount} email={email} onSubmit={submitCard} />

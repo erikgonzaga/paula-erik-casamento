@@ -22,35 +22,68 @@ const paymentResult = (status = 'pending', detail = 'waiting', challenge) => ({ 
   payment: { status: detail, expires_at: '2026-10-10T00:00:00Z', qr_code: null, qr_code_base64: null, ticket_url: null,
     ...(challenge ? { challenge: { url: challenge } } : {}) } });
 
-test('card checkout policy is fail-closed: test + explicit flag + public key; production always blocked', async () => {
+test('card checkout policy and API require a recognized environment, exact opt-in and public key', async () => {
   const keys = ['PAYMENTS_ENVIRONMENT', 'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'];
   const old = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   try {
-    for (const [environment, flag, key, expected] of [
-      ['test', 'true', 'MOCK_PUBLIC_KEY', true], ['test', 'false', 'MOCK_PUBLIC_KEY', false],
-      ['test', 'TRUE', 'MOCK_PUBLIC_KEY', false], ['test', 'true', '', false],
-      ['production', 'true', 'MOCK_PUBLIC_KEY', false], ['', 'true', 'MOCK_PUBLIC_KEY', false],
-    ]) {
-      process.env.PAYMENTS_ENVIRONMENT = environment; process.env.ENABLE_CREDIT_CARD_CHECKOUT = flag;
-      process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = key;
-      assert.equal(policy.creditCardCheckoutEnabled(), expected);
-    }
     let created = 0;
     globalThis.__cardRouteFixture = () => { created++; return paymentResult(); };
     const service = moduleUrl('export const createGiftPayment = async (...args) => globalThis.__cardRouteFixture(...args);');
     const http = moduleUrl('export const assertSameOrigin = () => {}; export const limit = async () => {}; export const readBody = r => r.json();');
     const route = await import(await typescriptModule('../src/app/api/gift-contributions/route.ts', { '@/services/gift-payments': service, '@/lib/invitations/http': http }));
-    for (const [environment, flag, expected] of [['production', 'true', 409], ['test', 'false', 409], ['test', 'true', 201]]) {
-      process.env.PAYMENTS_ENVIRONMENT = environment; process.env.ENABLE_CREDIT_CARD_CHECKOUT = flag;
-      process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY = 'MOCK_PUBLIC_KEY';
+    const cases = ['test', 'production'].flatMap(environment => [
+      [environment, 'true', 'MOCK_PUBLIC_KEY', true],
+      ...[undefined, '', 'false', 'TRUE', '1', ' true', 'true '].map(flag => [environment, flag, 'MOCK_PUBLIC_KEY', false]),
+      ...[undefined, '', '   '].map(key => [environment, 'true', key, false]),
+    ]);
+    cases.push(...[undefined, '', 'preview', 'development', 'Production'].map(environment => [environment, 'true', 'MOCK_PUBLIC_KEY', false]));
+    for (const [environment, flag, key, expected] of cases) {
+      for (const [name, value] of Object.entries({ PAYMENTS_ENVIRONMENT: environment,
+        ENABLE_CREDIT_CARD_CHECKOUT: flag, NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY: key })) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      }
+      assert.equal(policy.creditCardCheckoutEnabled(), expected);
+      const before = created;
       const response = await route.POST(new Request('https://fixture.invalid/api/gift-contributions', { method: 'POST', body: JSON.stringify({ payment_method: 'credit_card' }) }));
-      assert.equal(response.status, expected);
-      if (expected === 409) assert.deepEqual(await response.json(), {
+      assert.equal(response.status, expected ? 201 : 409);
+      assert.equal(created - before, expected ? 1 : 0, 'Disabled cards cannot start payment creation');
+      if (!expected) assert.deepEqual(await response.json(), {
         code: 'credit_card_unavailable', message: 'Pagamento por cartão ainda não está disponível.' });
     }
-    assert.equal(created, 1);
+    assert.equal(created, 2);
   } finally {
     delete globalThis.__cardRouteFixture;
+    for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
+test('Pix API stays independent of the card flag and public key in TEST and production', async () => {
+  const keys = ['PAYMENTS_ENVIRONMENT', 'ENABLE_CREDIT_CARD_CHECKOUT', 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'];
+  const old = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const received = [];
+  globalThis.__pixRouteFixture = async value => { received.push(value); return paymentResult(); };
+  const service = moduleUrl('export const createGiftPayment = value => globalThis.__pixRouteFixture(value);');
+  const http = moduleUrl('export const assertSameOrigin = () => {}; export const limit = async () => {}; export const readBody = r => r.json();');
+  try {
+    const route = await import(await typescriptModule('../src/app/api/gift-contributions/route.ts', {
+      '@/services/gift-payments': service, '@/lib/invitations/http': http,
+    }));
+    for (const environment of ['test', 'production']) {
+      process.env.PAYMENTS_ENVIRONMENT = environment;
+      delete process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
+      for (const flag of [undefined, 'false', 'TRUE', '1', 'true']) {
+        if (flag === undefined) delete process.env.ENABLE_CREDIT_CARD_CHECKOUT; else process.env.ENABLE_CREDIT_CARD_CHECKOUT = flag;
+        for (const body of [{ payment_method: 'pix' }, {}]) {
+          const before = received.length;
+          const response = await route.POST(new Request('https://fixture.invalid/api/gift-contributions', { method: 'POST', body: JSON.stringify(body) }));
+          assert.equal(response.status, 201);
+          assert.equal(received.length, before + 1);
+          assert.deepEqual(received.at(-1), body);
+        }
+      }
+    }
+  } finally {
+    delete globalThis.__pixRouteFixture;
     for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
 });
@@ -260,6 +293,8 @@ test('React checkout with mocked SDK/HTTP: lifecycle, Pix, idempotency, privacy 
       const before = instances.length;
       await mount(gift(), false); assert.equal(button('Cartão de crédito'), undefined); await unmount();
       const currentGift = await mount(); await card();
+      assert.ok(container.textContent.includes('Os dados do cartão são preenchidos no formulário seguro do Mercado Pago.'));
+      assert.ok(!container.textContent.includes('Pagamento de homologação'));
       assert.equal(instances.length, before + 1);
       assert.deepEqual(instances.at(-1).settings.customization.paymentMethods.types.excluded, ['debit_card', 'prepaid_card']);
       assert.equal(instances.at(-1).settings.customization.paymentMethods.maxInstallments, 12);
