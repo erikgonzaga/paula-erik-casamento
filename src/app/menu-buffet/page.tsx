@@ -18,9 +18,10 @@ const leftSections: readonly MenuSection[] = [
   {
     title: 'Entradas',
     items: [
+      { name: 'Stick Napolitano' },
       {
-        name: 'Stick Napolitano',
-        description: 'Palitos de massa folhada temperada com ervas – servido em mini copo com dip especial',
+        name: 'Palitos de massa folhada',
+        description: 'temperada com ervas – servido em mini copo com dip especial',
       },
       { name: 'Dadinho de tapioca com melaço de cana' },
     ],
