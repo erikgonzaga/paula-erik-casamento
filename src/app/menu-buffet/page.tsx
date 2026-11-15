@@ -117,7 +117,7 @@ export default function MenuBuffetPage() {
           <Image className={styles.names} src="/images/papelaria/Paula_Erik_Nomes_Coracao_Transparente.png"
             alt="Paula & Erik" width={2132} height={738} sizes="(max-width: 700px) 230px, 360px" preload />
           <p className={styles.date}><time dateTime="2026-11-21">21 DE NOVEMBRO DE 2026</time></p>
-          <h1 className={styles.title}>Menu <em>Churrasco</em></h1>
+          <h1 className={styles.title}>Menu</h1>
           <Image className={styles.ornament} src="/images/papelaria/Ornamento_Ramos_Coracao.png"
             alt="" aria-hidden="true" width={1983} height={793} sizes="180px" />
           <p className={styles.intro}>Um dia inteiro para celebrar o amor e estar junto.</p>
